@@ -11,12 +11,12 @@
 | 단계 | 트랙 | 상태 | 브랜치 | 마지막 갱신 |
 |---|---|---|---|---|
 | 문서 3종 + 디자인 사본 | — | ✅ 완료 | — | 2026-07-26 |
-| **M0** 스캐폴드·계약·스파이크 | — | 🔵 진행 중 | `main` | 2026-07-26 |
-| **CI** main 푸시 → 빌드 + 태그 릴리스 | — | 🔒 M0 대기 | `main` | — |
-| M2 백엔드 | A | 🔒 M0 대기 | `track/a-backend` | — |
-| M3 에디터 | B | 🔒 M0 대기 | `track/b-editor` | — |
-| M1·M4 메모 창 | C | 🔒 M0 스파이크 결론 대기 | `track/c-note-window` | — |
-| M5·M6 보드/설정 | D | 🔒 M0 대기 | `track/d-board-settings` | — |
+| **M0** 스캐폴드·계약·스파이크 | — | ✅ 완료 (검증 PASS) | `main` | 2026-07-26 |
+| **CI** main 푸시 → 빌드 + 태그 릴리스 | — | 🔵 진행 중 | `main` | 2026-07-26 |
+| M2 백엔드 | A | ⬜ 대기 (차단 해제) | `track/a-backend` | 2026-07-26 |
+| M3 에디터 | B | ⬜ 대기 (차단 해제) | `track/b-editor` | 2026-07-26 |
+| M1·M4 메모 창 | C | ⬜ 대기 (**스파이크 결론 확정 — 차단 해제**) | `track/c-note-window` | 2026-07-26 |
+| M5·M6 보드/설정 | D | ⬜ 대기 (차단 해제) | `track/d-board-settings` | 2026-07-26 |
 | **통합 게이트** | — | 🔒 | `main` | — |
 | M7 첨부·패키징 | — | 🔒 | `main` | — |
 
@@ -33,13 +33,18 @@
 **M0 스파이크 결론** (M0 완료 시 반드시 채울 것):
 
 ```
-투명도 구현 방식:  [ ] CSS opacity   [ ] 네이티브 SetLayeredWindowAttributes
-라운드 코너:       [ ] CSS radius + DONOTROUND   [ ] DWM ROUND
-그림자:            [ ] CSS drop-shadow + 24px 여백   [ ] DWM 기본 그림자
-비고:
+투명도 구현 방식:  [x] CSS opacity   [ ] 네이티브 SetLayeredWindowAttributes
+라운드 코너:       [x] CSS radius + DONOTROUND   [ ] DWM ROUND
+그림자:            [x] CSS drop-shadow + 24px 여백   [ ] DWM 기본 그림자
+비고: plan.md 1순위 경로 전량 채택. 폴백 불필요.
+  · 35%에서 뒤 창이 비치고 본문 판독 가능, 아티팩트 없음 (스크린샷 확인)
+  · DwmGetWindowAttribute(33) == 1(DWMWCP_DONOTROUND), 코너 6배 확대 시 검은 테두리 없음
+  · drop-shadow가 사방 24px 여백 안에서 잘리지 않음
+  · 네이티브 폴백 set_window_opacity는 win.rs에 구현돼 있으나 **사용하지 않는다** (경로 유지만)
+  · 스파이크 4(드래그/리사이즈 깜빡임)만 미판정 — 사람 확인 항목으로 이월
 ```
 
-**트랙 C는 이 블록이 채워지기 전에 스폰하지 않는다.**
+**트랙 C는 이 블록이 채워지기 전에 스폰하지 않는다.** → 2026-07-26 채워짐, C 차단 해제.
 
 ---
 
@@ -255,6 +260,12 @@ src/styles/tokens.css     — 디자인 토큰
 ```
 
 M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 수정하지 않는다. 검증 에이전트는 이 파일들이 diff에 들어갔으면 **무조건 FAIL**을 낸다.
+
+### 계약 변경 이력
+
+| 날짜 | 파일 | 변경 | 사유 |
+|---|---|---|---|
+| 2026-07-26 | `src/styles/tokens.css` | `--range-thumb-bg` `--range-thumb-border` **추가** | M0 검증에서 `global.css`의 슬라이더 thumb 하드코딩 색 2건 적발. 순수 추가라 기존 변수 불변, 트랙 스폰 **전**에 처리해 리베이스 비용 0 |
 
 ### 계약을 바꿔야 할 때
 

@@ -1,0 +1,136 @@
+name: release
+
+# main 에 푸시될 때마다 Windows 인스톨러를 빌드하고 태그 릴리스를 만든다.
+# 사양 근거: plan.md "CI/CD — main 푸시마다 빌드 + 태그 릴리스"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # 테스트·린트. 실패해도 릴리스를 막지 않는다 (개발 중 다운로드 가능한 빌드가 우선).
+  check:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - name: 프론트 타입체크 + 번들
+        run: npm run build
+
+      - name: vitest
+        run: npm test
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+  release:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # 버전은 main 푸시마다 단조 증가한다. 빌드 전에 세 파일에 써넣어
+      # 인스톨러 파일명 / exe 메타데이터 / 태그가 전부 같은 값을 갖게 한다.
+      # 이 변경은 커밋하지 않는다 — 러너 워크스페이스에만 반영된다.
+      - name: 버전 결정
+        id: ver
+        shell: pwsh
+        run: |
+          $version = "0.1.$env:GITHUB_RUN_NUMBER"
+          Write-Host "version = $version"
+
+          $pkgPath = "package.json"
+          $pkg = Get-Content $pkgPath -Raw -Encoding utf8
+          $pkg = $pkg -replace '(?m)^(\s*"version":\s*)"[^"]*"', "`${1}""$version"""
+          [System.IO.File]::WriteAllText((Resolve-Path $pkgPath), $pkg, (New-Object System.Text.UTF8Encoding($false)))
+
+          $confPath = "src-tauri/tauri.conf.json"
+          $conf = Get-Content $confPath -Raw -Encoding utf8
+          $conf = $conf -replace '(?m)^(\s*"version":\s*)"[^"]*"', "`${1}""$version"""
+          [System.IO.File]::WriteAllText((Resolve-Path $confPath), $conf, (New-Object System.Text.UTF8Encoding($false)))
+
+          $cargoPath = "src-tauri/Cargo.toml"
+          $cargo = Get-Content $cargoPath -Raw -Encoding utf8
+          $cargo = $cargo -replace '(?m)^version = "[^"]*"', "version = ""$version""", 1
+          [System.IO.File]::WriteAllText((Resolve-Path $cargoPath), $cargo, (New-Object System.Text.UTF8Encoding($false)))
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=v$version"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: 버전 반영 확인
+        shell: pwsh
+        run: |
+          Select-String -Path package.json, src-tauri/tauri.conf.json -Pattern '"version"' | Select-Object -First 2
+          Select-String -Path src-tauri/Cargo.toml -Pattern '^version' | Select-Object -First 1
+
+      - run: npm ci
+
+      # tauri build 가 beforeBuildCommand 로 npm run build 를 실행한다.
+      - name: NSIS 인스톨러 빌드
+        run: npm run tauri build
+
+      - name: 산출물 확인
+        id: artifact
+        shell: pwsh
+        run: |
+          $dir = "src-tauri/target/release/bundle/nsis"
+          if (-not (Test-Path $dir)) { throw "NSIS 번들 디렉터리가 없다: $dir" }
+          $files = Get-ChildItem $dir -Filter *.exe
+          if ($files.Count -eq 0) { throw "NSIS 인스톨러(.exe)가 생성되지 않았다." }
+          $files | ForEach-Object { Write-Host "$($_.Name)  $([math]::Round($_.Length/1MB,2)) MB" }
+
+      - name: 릴리스 생성
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          # v1.0.0(M7 정식 릴리스) 전까지는 prerelease 로 표시한다.
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            `main` 자동 빌드 — 커밋 ${{ github.sha }}
+
+            > **개발 중 프리릴리스입니다.** 전체 마일스톤(M7) 완료 전까지 기능이 일부 미구현일 수 있습니다.
+            > 설치는 사용자 단위(`currentUser`)이며 관리자 권한이 필요하지 않습니다.
+          files: src-tauri/target/release/bundle/nsis/*.exe
+          fail_on_unmatched_files: true

@@ -146,6 +146,70 @@
   padding: 1px 4px;
 }
 
+/* ── 이미지 첨부 (디자인 100~102행) ──────────────────────── */
+/* 96×64 플레이스홀더를 그대로 재사용한다 — 로드 전·실패 시엔 빗금 배경이
+   그대로 보이고, 로드되면 같은 상자 안에 이미지가 채워진다. */
+.cm-attachment {
+  display: inline-grid;
+  place-items: center;
+  width: var(--attach-w);
+  height: var(--attach-h);
+  vertical-align: bottom;
+  overflow: hidden;
+  border: 1px solid var(--attach-border);
+  border-radius: var(--radius-attach);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--attach-stripe) 0 6px,
+    transparent 6px 12px
+  );
+}
+
+.cm-attachment__img {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cm-attachment__label {
+  grid-area: 1 / 1;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-micro);
+  line-height: 1.3;
+  color: var(--on-paper-soft);
+  text-align: center;
+  white-space: pre-line; /* 실패 문구 2줄 (사유 + 경로) */
+  overflow-wrap: anywhere;
+}
+
+/* 이미지가 뜨면 안내 문구를 감춘다 */
+.cm-attachment[data-state='ok'] .cm-attachment__label {
+  display: none;
+}
+
+/* 실패는 조용히 넘어가지 않는다 — 빨간 테두리 + 사유·경로 노출 */
+.cm-attachment[data-state='error'] {
+  border-color: var(--red-close);
+}
+
+.cm-attachment[data-state='error'] .cm-attachment__label {
+  color: var(--red-close);
+}
+
+/* 붙여넣기 실패 띠 — 눌러서 닫는다 */
+.cm-attachment-error {
+  padding: 6px var(--note-body-pad-x);
+  font-size: var(--fs-small);
+  line-height: var(--lh-compact);
+  color: var(--red-close);
+  background: var(--chip-bg);
+  border-top: 1px solid var(--paper-divider);
+  cursor: pointer;
+}
+
 /* ── 태그 (디자인 105~107행) ─────────────────────────────── */
 .cm-tag {
   font-size: var(--fs-small);

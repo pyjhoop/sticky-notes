@@ -15,6 +15,7 @@ import { EditorView } from '@codemirror/view'
 import { useEffect, useRef } from 'react'
 
 import { createNoteEditorExtensions, externalUpdate } from '../editor'
+import { attachmentStoreForRuntime } from '../lib/attachments'
 import '../styles/editor.css'
 
 export interface NoteEditorProps {
@@ -55,6 +56,8 @@ export default function NoteEditor({
         extensions: createNoteEditorExtensions({
           placeholder: initial.placeholder,
           onChange: (next) => onChangeRef.current(next),
+          // M7 — Tauri 밖(브라우저 개발 모드)에서는 undefined 라 붙여넣기가 기본 동작으로 흐른다
+          attachments: attachmentStoreForRuntime(),
         }),
       }),
       parent,

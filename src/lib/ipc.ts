@@ -388,3 +388,36 @@ export function getAutostart(): Promise<boolean> {
 export function setAutostart(enabled: boolean): Promise<boolean> {
   return call('set_autostart', { enabled })
 }
+
+// ─────────────────────────────────────────────────────────────
+// attachments — M7
+// ─────────────────────────────────────────────────────────────
+
+/** 확장자 힌트를 싣는 IPC 헤더 (`src-tauri/src/attachments.rs::EXT_HEADER`). */
+const ATTACHMENT_EXT_HEADER = 'x-attachment-ext'
+
+/**
+ * 붙여넣은 이미지를 앱 저장소에 넣고 `attachments/<uuid>.<ext>` 를 받는다.
+ *
+ * 바이트는 JSON 숫자 배열이 아니라 **raw IPC 바디**로 보낸다 — 스크린샷 한 장이
+ * 수 MB 라 배열로 직렬화하면 붙여넣기마다 눈에 띄게 멈춘다.
+ * `extHint` 는 `image/png` 같은 MIME 이나 `png` 같은 확장자 둘 다 된다.
+ * 최종 판정은 백엔드의 화이트리스트가 한다.
+ */
+export async function saveAttachment(bytes: Uint8Array, extHint: string): Promise<string> {
+  try {
+    return await tauriInvoke<string>('save_attachment', bytes, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        [ATTACHMENT_EXT_HEADER]: extHint,
+      },
+    })
+  } catch (e) {
+    throw new IpcError('save_attachment', typeof e === 'string' ? e : String(e))
+  }
+}
+
+/** 첨부 폴더 절대 경로. `convertFileSrc()` 에 넘길 경로를 만드는 데 쓴다. */
+export function getAttachmentsDir(): Promise<string> {
+  return call('get_attachments_dir')
+}

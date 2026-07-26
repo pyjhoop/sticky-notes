@@ -167,10 +167,14 @@
   --radius-toggle: 11px;
 
   /* ── 치수 ───────────────────────────────────────────── */
-  /* 메모 창 = 종이 + 사방 24px 투명 여백.
-     여백을 줄이면 --shadow-note 가 잘린다 (CLAUDE.md "흔한 함정"). */
-  --note-margin: 24px;
+  /* 메모 창 = 종이. 사방 여백도 그림자도 없다.
+     (2026-07-26 사용자 지시 — 종이 바깥에 아무것도 감싸지 않는다.
+      --note-margin: 24px + --shadow-note 는 폐기됐다. 근거는 src/styles/note.css 머리말)
+     리사이즈 그랩 존은 여백 대신 종이 가장자리 안쪽에 둔다. */
+  --note-grab: 6px;
+  --note-grab-corner: 8px;
   --note-width: 436px;
+  --note-height: 420px;
   --control-bar-h: 38px;
   --control-btn: 26px;
   --control-swatch: 11px;

@@ -440,7 +440,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
       ))}
 
       {/* 투명도는 종이 래퍼에 건다. 창 자체가 아니다. */}
-      <div className="note-shadow">
+      <div className="note-fade">
         <div className="note-paper">
           <ControlBar
             pinned={pinned}

@@ -19,13 +19,11 @@ pub const NOTE_TEMPLATE: &str = "note";
 pub const BOARD_LABEL: &str = "board";
 pub const SETTINGS_LABEL: &str = "settings";
 
-/// 메모 창 = 종이 + 사방 24px 투명 여백.
-/// 여백을 줄이면 `drop-shadow(0 26px 44px …)`가 잘린다.
-pub const NOTE_PADDING: f64 = 24.0;
-
 /// 복원 시 화면 안에 반드시 남겨둘 길이(논리 px).
-/// **컨트롤 바 80px** + 창 가장자리의 투명 여백.
-pub const MIN_VISIBLE: f64 = NOTE_PADDING + 80.0;
+///
+/// 2026-07-26 — 창 = 종이가 되면서 사방 24px 투명 여백이 사라졌다
+/// (`src/styles/note.css` 머리말). 여백만큼 빼고 **컨트롤 바 80px**만 남긴다.
+pub const MIN_VISIBLE: f64 = 80.0;
 
 /// 모든 메모 창에 브로드캐스트하는 이벤트 — 트레이 "모든 메모 저장"
 pub const EVENT_SAVE_ALL: &str = "sticky://save-all";
@@ -518,7 +516,7 @@ mod tests {
         assert_eq!(g.monitor, r"\\.\DISPLAY2");
         assert_eq!(g.scale, 1.5);
         assert_eq!((g.x, g.y), (200.0, 133.33333333333334));
-        assert_eq!((g.w, g.h), (484.0, 468.0)); // 논리 px = 디자인 창 크기
+        assert_eq!((g.w, g.h), (484.0, 468.0)); // 논리 px (창 크기는 임의값)
 
         let (x, y, w, h) = to_physical(&a, &g);
         assert_eq!((x, y, w, h), (px, py, pw, ph));

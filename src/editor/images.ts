@@ -34,7 +34,7 @@ import {
   type Panel,
 } from '@codemirror/view'
 
-import { cursorInside, type DecoRange } from './shared'
+import { type DecoRange } from './shared'
 
 /** 붙여넣은 이미지를 앱 저장소에 넣고 마크다운에 쓸 상대 경로를 돌려준다. */
 export interface AttachmentStore {
@@ -172,10 +172,26 @@ class AttachmentWidget extends WidgetType {
 }
 
 /**
+ * 커서가 노드 **안쪽**에 있는가 — 경계는 안으로 치지 않는다.
+ *
+ * `shared.cursorInside` 는 경계를 포함한다(`**굵게**` 바로 뒤에 커서를 두면
+ * 마커가 보여야 편집할 수 있으므로). 이미지는 그 규칙을 쓰면 안 된다:
+ * 붙여넣기 직후 커서가 `![](…)` 의 끝에 놓이는데, 경계를 안으로 치면
+ * 방금 붙여넣은 이미지가 마크다운 원문으로 보인다.
+ * 원문을 보려면 위젯 안으로 한 칸 들어가거나(←) 범위 선택을 하면 된다.
+ */
+function cursorStrictlyInside(state: EditorState, from: number, to: number): boolean {
+  for (const range of state.selection.ranges) {
+    if (range.from < to && range.to > from) return true
+  }
+  return false
+}
+
+/**
  * `from`~`to` 구간의 `![](…)` 를 인라인 위젯으로 바꾼다.
  *
- * 커서가 노드 안이면 데코레이션을 만들지 않는다 — 다른 마커 규칙과 같다
- * (`inlineMarkers` / `wikilinkTag` 의 `cursorInside` 판정과 동일한 근거).
+ * 커서가 노드 안쪽이면 데코레이션을 만들지 않는다 — 마크다운 원문이 그대로 드러나
+ * 경로를 고칠 수 있다 (CLAUDE.md 절대규칙 3).
  *
  * `covered` 에는 위젯이 덮은 범위를 남긴다. `buildDecorations` 가 그 안쪽의
  * 다른 데코레이션을 걸러 `replace` 끼리 겹치는 것을 막는다.
@@ -194,7 +210,7 @@ export function buildImageDecorations(
       if (node.name !== 'Image') return
       const parsed = parseImageMarkdown(state.doc.sliceString(node.from, node.to))
       if (!parsed) return
-      if (cursorInside(state, node.from, node.to)) return
+      if (cursorStrictlyInside(state, node.from, node.to)) return
 
       out.push(
         Decoration.replace({

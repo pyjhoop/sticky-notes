@@ -11,9 +11,6 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import type { AttachmentStore } from '../editor/images'
 import { getAttachmentsDir, isTauri, saveAttachment } from './ipc'
 
-/** 마크다운 상대 경로의 접두사 (`src-tauri/src/attachments.rs::ATTACHMENT_PREFIX`). */
-export const ATTACHMENT_PREFIX = 'attachments/'
-
 /** 웹뷰가 그대로 로드할 수 있는 스킴 — 파일 경로로 취급하지 않는다. */
 const PASSTHROUGH_SCHEME = /^(?:https?|data|blob|asset):/i
 
@@ -25,17 +22,12 @@ const PASSTHROUGH_SCHEME = /^(?:https?|data|blob|asset):/i
  */
 let dirPromise: Promise<string> | null = null
 
-export function attachmentsDir(): Promise<string> {
+function attachmentsDir(): Promise<string> {
   dirPromise ??= getAttachmentsDir().catch((e) => {
     dirPromise = null
     throw e
   })
   return dirPromise
-}
-
-/** 테스트·창 전환용 — 캐시를 버린다. */
-export function resetAttachmentsDirCache(): void {
-  dirPromise = null
 }
 
 /**

@@ -139,10 +139,17 @@ describe('인라인 위젯 데코레이션', () => {
     expect(doc.slice(ranges[0][0], ranges[0][1])).toBe('![](attachments/a.png)')
   })
 
-  it('커서가 안에 있으면 원문이 그대로 보인다', () => {
+  it('커서가 안쪽이면 원문이 그대로 보인다', () => {
     const doc = '![](attachments/a.png)'
     expect(widgetRanges(decorationsOf(doc, 5))).toHaveLength(0)
-    expect(widgetRanges(decorationsOf(doc, 0))).toHaveLength(0)
+    expect(widgetRanges(decorationsOf(doc, doc.length - 1))).toHaveLength(0)
+  })
+
+  it('커서가 경계에 있으면 위젯이 유지된다 — 붙여넣기 직후 상태', () => {
+    const doc = '![](attachments/a.png)'
+    // replaceSelection 은 커서를 삽입 텍스트 끝(= 노드의 to)에 둔다
+    expect(widgetRanges(decorationsOf(doc, doc.length))).toHaveLength(1)
+    expect(widgetRanges(decorationsOf(doc, 0))).toHaveLength(1)
   })
 
   it('코드블록 안의 `![](…)` 는 위젯이 되지 않는다', () => {

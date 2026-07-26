@@ -99,25 +99,43 @@
   padding: 1px 5px;
 }
 
-/* ── 코드블록 (디자인 94~97행) ───────────────────────────── */
+/* ── 코드블록 (디자인 94~97행) ─────────────────────────────
+ * 여백 규칙만 `.cm-line` 을 겹쳐 적는다 — **명시도를 맞추기 위해서다.**
+ * `theme.ts` 의 `.cm-line { padding: … }` 는 style-mod 가 테마 클래스를 앞에 붙여
+ * `.ͼo .cm-line`(0,2,0)이 되므로, 클래스 하나짜리 `.cm-code-line`(0,1,0)은
+ * 그 padding 단축 속성에 **진다** — 코드블록의 안쪽 여백 11px/13px 이 통째로
+ * 죽어 글자가 블록 모서리에 붙어 있었다. `.cm-line.cm-code-line` 으로 (0,2,0)을
+ * 맞추면 문서 순서로 이긴다: style-mod 는 <style> 을 `head.firstChild` **앞**에
+ * 넣으므로(style-mod/src/style-mod.js:138) 이 파일이 항상 뒤다.
+ * 색·글꼴처럼 테마가 건드리지 않는 속성은 겹쳐 적을 필요가 없다.
+ */
 .cm-code-line {
   background: var(--code-bg);
   color: var(--code-fg);
   font-family: var(--font-mono);
   font-size: var(--fs-code);
   line-height: var(--lh-code);
+}
+
+.cm-line.cm-code-line {
   padding-left: 13px;
   padding-right: 13px;
 }
 
-.cm-code-line-first {
+.cm-line.cm-code-line-first {
   padding-top: 11px;
+}
+
+.cm-code-line-first {
   border-top-left-radius: var(--radius-code);
   border-top-right-radius: var(--radius-code);
 }
 
-.cm-code-line-last {
+.cm-line.cm-code-line-last {
   padding-bottom: 11px;
+}
+
+.cm-code-line-last {
   border-bottom-left-radius: var(--radius-code);
   border-bottom-right-radius: var(--radius-code);
 }

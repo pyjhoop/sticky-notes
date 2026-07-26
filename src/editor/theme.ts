@@ -125,7 +125,10 @@ export const noteEditorTheme = EditorView.theme(
      *
      * 그래서 **깎이던 절반만큼만** 왼쪽에 돌려준다. 0.75px 라 본문 시작 위치는
      * 눈으로 구분되지 않고(20px → 20.75px), 캐럿은 경계를 가운데 둔 채 온전히 그려진다.
-     * `.cm-code-line`(editor.css)의 padding-left:13px 은 문서 순서상 뒤라 그대로 이긴다.
+     *
+     * 주의 — 이 규칙은 style-mod 가 테마 클래스를 앞에 붙여 `.ͼo .cm-line`(명시도
+     * 0,2,0)이 된다. 코드블록의 안쪽 여백을 살리려면 editor.css 쪽도 같은 명시도로
+     * 적어야 한다(`.cm-line.cm-code-line`). 거기 주석 참조.
      */
     '.cm-line': { padding: '0 0 0 calc(var(--caret-w) / 2)' },
 

@@ -1,0 +1,158 @@
+/*
+ * 설정 창 (M6) — 620px 고정폭, DISPLAY / DATA / SHORTCUTS.
+ *
+ * 근거: design/Sticky Notes for Windows.dc.html line 210-258
+ *   디자인의 `OBSIDIAN` 섹션은 v1에서 `DATA`로 재해석됐다 (plan.md).
+ *
+ * 공용 다크 크롬(TitleBar · Toggle · 필드 · 버튼)은 board.css에 있다.
+ *
+ * **소유: 트랙 D.**
+ */
+
+@import './board.css';
+
+/* 설정 창은 디자인상 보드보다 한 단계 진한 크롬 — rgba(34,32,30,.94) */
+body[data-window='settings'] .dark-window {
+  background: var(--dark-bg-settings);
+}
+
+body[data-window='settings'][data-backdrop='opaque'] .dark-window,
+body[data-window='settings']:not([data-backdrop]) .dark-window {
+  background: var(--dark-bg-opaque);
+}
+
+.settings__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-section-gap);
+  padding: var(--settings-pad-y) var(--settings-pad-x) 26px;
+}
+
+.settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-row-gap);
+}
+
+.settings__divider {
+  height: 1px;
+  flex: none;
+  background: var(--dark-divider);
+}
+
+/* 라벨 + 컨트롤 한 줄 — 디자인 line 220-232 */
+.settings__row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.settings__label {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body-sm);
+}
+
+.settings__sub {
+  margin-top: 2px;
+  font-size: var(--fs-small);
+  color: var(--dark-text-3);
+}
+
+.settings__sub--mono {
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-tiny);
+  color: var(--dark-text-3);
+}
+
+/* 세로로 쌓는 항목 (경로 필드 + 버튼) — 디자인 line 239-245 */
+.settings__field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.settings__field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.settings__range {
+  width: 180px;
+  height: 14px;
+  flex: none;
+}
+
+.settings__range-value {
+  width: 34px;
+  flex: none;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-label-lg);
+  color: var(--dark-text-btn);
+}
+
+/* 악센트 색 — 팔레트 스와치와 같은 규격(22px) */
+.settings__accents {
+  display: flex;
+  gap: var(--palette-gap);
+}
+
+.settings__accent {
+  width: var(--palette-swatch);
+  height: var(--palette-swatch);
+  border-radius: var(--radius-swatch);
+  border: 1px solid var(--dark-btn-border);
+}
+
+.settings__accent[aria-pressed='true'] {
+  box-shadow: 0 0 0 2px var(--dark-text);
+}
+
+/* 단축키 입력 */
+.settings__accel {
+  width: 168px;
+  flex: none;
+  height: var(--field-h);
+  padding: 0 11px;
+  border-radius: var(--radius-field);
+  background: var(--dark-field-bg-soft);
+  border: 1px solid var(--dark-border);
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--dark-text-2);
+  text-align: center;
+}
+
+.settings__accel:focus {
+  border-color: var(--accent);
+  color: var(--dark-text);
+}
+
+.settings__error {
+  font-size: var(--fs-small);
+  color: var(--red-close);
+}
+
+.settings__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-field);
+  background: var(--dark-field-bg);
+  border: 1px solid var(--dark-border);
+  font-size: var(--fs-small);
+  color: var(--dark-text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.settings__notice--warn {
+  color: var(--yellow-saving);
+}

@@ -29,6 +29,33 @@ function mount(doc: string): EditorView {
   return view
 }
 
+/**
+ * **우리 테마가 주입한** CSS만 모은다.
+ *
+ * head 전체를 합치면 CodeMirror 기본 테마까지 섞인다. 그러면
+ * `@keyframes cm-blink` 나 `.cm-cursorLayer .cm-cursor` 같은 단언이
+ * **우리 코드를 통째로 지워도 통과한다.** 기본 테마는 CSS 변수를 쓰지 않으므로
+ * `var(--` 를 담은 시트만 남기면 우리 것만 걸러진다.
+ */
+function injectedCss(): string {
+  return Array.from(document.head.querySelectorAll('style'))
+    .map((el) => el.textContent ?? '')
+    .filter((css) => css.includes('var(--'))
+    .join('\n')
+}
+
+/**
+ * 주입된 CSS에서 `fragment`를 포함하는 규칙 **한 줄**을 꺼낸다.
+ * style-mod는 규칙 하나를 한 줄(`셀렉터 {a: b; c: d}`)로 쓴다.
+ */
+function ruleFor(fragment: string): string {
+  const rule = injectedCss()
+    .split('\n')
+    .find((line) => line.includes(fragment))
+  expect(rule, `${fragment} 규칙이 주입되지 않았다`).toBeDefined()
+  return rule as string
+}
+
 const KITCHEN_SINK = [
   '# 스프린트 24 · 릴리스 체크',
   '',
@@ -105,22 +132,6 @@ describe('EditorView 렌더', () => {
  * 나오기 위한 구조와 CSS 규칙이 살아 있는지**를 지킨다.
  */
 describe('캐럿 · 현재 줄', () => {
-  /** 마운트된 뷰가 head 에 주입한 CodeMirror 스타일 전체 */
-  /**
-   * **우리 테마가 주입한** CSS만 모은다.
-   *
-   * head 전체를 합치면 CodeMirror 기본 테마까지 섞인다. 그러면
-   * `@keyframes cm-blink` 나 `.cm-cursorLayer .cm-cursor` 같은 단언이
-   * **우리 코드를 통째로 지워도 통과한다.** 기본 테마는 CSS 변수를 쓰지 않으므로
-   * `var(--` 를 담은 시트만 남기면 우리 것만 걸러진다.
-   */
-  function injectedCss(): string {
-    return Array.from(document.head.querySelectorAll('style'))
-      .map((el) => el.textContent ?? '')
-      .filter((css) => css.includes('var(--'))
-      .join('\n')
-  }
-
   it('drawSelection 의 커서 레이어가 스크롤러 직계 자식으로 붙는다', () => {
     const editor = mount('한 줄')
     const layer = editor.dom.querySelector('.cm-cursorLayer')
@@ -204,5 +215,58 @@ describe('캐럿 · 현재 줄', () => {
     expect(editor.dom.classList.contains('cm-focused')).toBe(false)
     // 그래도 현재 줄 표시는 남는다 (위치는 계속 보인다).
     expect(editor.dom.querySelector('.cm-activeLine')).not.toBeNull()
+  })
+})
+
+/**
+ * 스크롤바.
+ *
+ * 사용자 신고 — "스크롤 디자인이 너무 크다". 스타일이 하나도 없어서 WebView2
+ * (Chromium) 기본 스크롤바(폭 15px + 회색 트랙 + 화살표 버튼)가 종이 위에 그대로
+ * 나왔다. jsdom 에는 스크롤바가 없으므로 **규칙이 주입됐는지**만 지킨다.
+ */
+describe('스크롤바', () => {
+  it('테마가 스크롤바 규칙을 주입한다', () => {
+    mount('한 줄')
+    const css = injectedCss()
+
+    // 폭을 늘 예약해 스크롤바가 생기는 순간 본문이 밀리지 않게 한다
+    expect(css).toContain('scrollbar-gutter: stable')
+
+    // 트랙은 보이지 않고, 화살표 버튼도 없다 (Windows 11 기준)
+    expect(ruleFor('.cm-scroller::-webkit-scrollbar-track')).toContain('background: transparent')
+    expect(ruleFor('.cm-scroller::-webkit-scrollbar-button')).toContain('display: none')
+
+    // 썸: 알약 라운드 + 종이 5색 어디에서도 성립하는 알파 잉크
+    const thumb = ruleFor('.cm-scroller::-webkit-scrollbar-thumb {')
+    expect(thumb).toContain('background-color: var(--on-paper-ghost)')
+    expect(thumb).toContain('border-radius: var(--radius-pill)')
+    // 투명 border + padding-box 가 "트랙 안의 가는 썸"을 만드는 장치다
+    expect(thumb).toContain('background-clip: padding-box')
+
+    // 호버·드래그에서만 또렷해진다
+    expect(css).toContain('background-color: var(--on-paper-mid)')
+  })
+
+  it('표준 scrollbar-width / scrollbar-color 를 쓰지 않는다', () => {
+    // 한 엘리먼트에 표준 속성과 ::-webkit-scrollbar 를 같이 쓰면 Chromium 은
+    // 표준 쪽을 채택하고 ::-webkit-scrollbar 규칙을 **통째로 무시한다.**
+    // 이 단언이 깨지면 위 테마가 화면에서 조용히 사라진다.
+    mount('한 줄')
+    const css = injectedCss()
+    expect(css).not.toMatch(/scrollbar-width\s*:/)
+    expect(css).not.toMatch(/scrollbar-color\s*:/)
+  })
+
+  it('유휴 ↔ 호버가 트랙 폭을 바꾸지 않는다 (레이아웃 시프트 0)', () => {
+    mount('한 줄')
+
+    // 트랙 폭은 한 곳에서만 정해진다
+    expect(ruleFor('.cm-scroller::-webkit-scrollbar {')).toContain('width: var(--scrollbar-w')
+
+    // 호버는 색과 **border 굵기**만 바꾼다. width 를 건드리면 본문 폭이 흔들린다.
+    const hover = ruleFor('.cm-scroller:hover::-webkit-scrollbar-thumb')
+    expect(hover).toContain('border-width:')
+    expect(hover.replace(/border-width:/g, '')).not.toContain('width:')
   })
 })

@@ -279,6 +279,29 @@ NSIS 인스톨러 빌드, 앱 아이콘, 자동 시작.
 
 ---
 
+## CI/CD — main 푸시마다 빌드 + 태그 릴리스
+
+> **M7이 아니라 M0 병합 직후에 붙인다.** 이후 모든 트랙 병합이 실제 Windows 빌드로 검증되고,
+> 사용자가 중간 산출물을 언제든 내려받아 볼 수 있다.
+
+`.github/workflows/release.yml` — `on: push: branches: [main]`
+
+| 단계 | 내용 |
+|---|---|
+| 러너 | `windows-latest` (Tauri NSIS는 Windows에서만 빌드된다) |
+| 캐시 | `actions/setup-node`(npm) + `Swatinem/rust-cache`(`src-tauri/target`) |
+| 버전 | `v0.1.${{ github.run_number }}` — main 푸시마다 단조 증가. 빌드 전에 `tauri.conf.json`·`package.json`의 `version`에 써넣어 인스톨러 파일명과 일치시킨다 (이 커밋은 푸시하지 않는다 — 워크스페이스에서만 반영) |
+| 빌드 | `npm ci` → `npm run build` → `npm run tauri build` |
+| 릴리스 | `softprops/action-gh-release` — 태그 `v0.1.N` 생성 + NSIS `.exe`(있으면 `.msi`도) 첨부. `permissions: contents: write` |
+| prerelease | **v1.0.0 전까지 `prerelease: true`.** M7에서 정식 릴리스로 전환 |
+| 동시성 | `concurrency: { group: release-main, cancel-in-progress: false }` — 태그 경합 방지 |
+
+`[skip ci]`가 커밋 메시지에 있으면 건너뛴다 (진행 표 갱신 같은 문서 커밋용).
+
+빌드 실패는 **트랙 병합을 되돌리지 않는다.** 리더가 수정 에이전트를 붙여 main에서 고친다.
+
+---
+
 ## 검증
 
 ### 자동

@@ -21,6 +21,7 @@ import {
   EditorView,
   ViewPlugin,
   drawSelection,
+  highlightActiveLine,
   keymap,
   placeholder as placeholderExt,
   type DecorationSet,
@@ -148,7 +149,12 @@ export interface NoteEditorOptions {
 export function createNoteEditorExtensions(options: NoteEditorOptions = {}): Extension[] {
   const extensions: Extension[] = [
     history(),
+    // 캐럿. 네이티브 캐럿을 끄고 `.cm-cursor` div 를 직접 그린다 —
+    // 그 div 는 `.cm-focused` 안에서만 보인다 (theme.ts "캐럿" 절 참조).
     drawSelection(),
+    // 현재 줄 강조. 캐럿이 사라지는 동안(창이 OS 포커스를 잃은 동안)에도
+    // "지금 어느 줄에 있는가" 가 남아 있어야 한다 (theme.ts "현재 줄" 절 참조).
+    highlightActiveLine(),
     keymap.of([...defaultKeymap, ...historyKeymap]),
 
     // base: markdownLanguage → GFM(태스크 리스트·취소선)까지 파싱한다.

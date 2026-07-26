@@ -21,6 +21,8 @@
 | M7 첨부·패키징 | — | ✅ **완료 — main 병합** (코드 검증만) | `m7-attachments` | 2026-07-26 |
 | **사용자 신고 결함 2건** (투명도 실시간 반영 · 메모 바깥 검정 영역) | — | ✅ **완료 — 실기 확인 PASS** | `main` | 2026-07-26 |
 | **사용자 신고 5건** (커서·프로세스 유지·보드 갱신·자동 업데이트·이미지 리사이즈) | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** | `main` | 2026-07-26 |
+| **캐럿 가시성 재발** (신고 #1 재발) | — | 🟡 **검증 PASS · main 병합 — 사용자 실기 확인 대기** | `fix/caret-visibility` | 2026-07-26 |
+| **스크롤바 축소** | — | ⬜ 대기 (캐럿과 파일 겹침 → 직렬) | — | 2026-07-26 |
 
 상태 기호: ⬜ 대기 · 🔒 선행 미완 · 🔵 진행 중 · 🟡 사람 확인 대기 · ✅ 완료 · ⚠️ 막힘
 
@@ -291,6 +293,7 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-07-26 | `src-tauri/tauri.conf.json` | `plugins.updater`(endpoints · pubkey · `installMode: passive`) + `bundle.createUpdaterArtifacts: true` **추가** | 위와 같은 건. 엔드포인트는 `releases/latest/download/latest.json` — CI 가 만들어 릴리스에 붙인다. **개인키는 저장소에 없다**: GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY` / `..._PASSWORD` |
 | 2026-07-26 | `src/lib/ipc.ts` | `UpdateInfo` 타입 · `EVENT_NOTES_CHANGED` · `EVENT_UPDATE_AVAILABLE` · `getAppVersion` `checkUpdate` `getPendingUpdate` `installUpdate` **추가** | 위 커맨드/이벤트의 래퍼. 순수 추가라 기존 시그니처 불변 |
 | 2026-07-26 | `src/styles/tokens.css` | `--attach-handle: 14px` / `--attach-handle-bg` **추가** | 사용자 요청 #5 이미지 크기 조절 손잡이. 순수 추가 |
+| 2026-07-26 | `src/styles/tokens.css` | `--caret-w: 1.5px` / `--active-line-bg` / `--active-line-bg-focused` **추가** | 캐럿 재발 수정의 검증에서 **토큰 의미 오용 3건** 적발. 구현 에이전트가 동결 규칙을 지키느라 `--checkbox-border-w`(체크박스 테두리)를 캐럿 굵기로, `--footer-bg`(푸터 배경)·`--paper-divider`(본문 구분선)를 현재 줄 강조로 재사용했다 — 나중에 체크박스 테두리를 조정하면 캐럿 굵기가 조용히 따라 바뀐다. 리더가 순수 추가로 해소. 기존 변수 불변 |
 
 ### 계약을 바꿔야 할 때
 
@@ -487,6 +490,22 @@ git merge track/b-editor
 | 3 | 보드 창에서 추가·열기·삭제가 안 된다 | **바뀜을 알리는 쪽이 없었다.** `sticky://note-meta-changed` 는 `shortcuts.rs` 전역 핀 토글에서만 emit 됐고 create/save/set_meta/soft_delete 는 아무 이벤트도 안 냈다 → 보드는 처음 읽은 목록을 끝까지 들고 있었다. 보드에는 **새 메모 버튼 자체가 없었고**, `open_note_window` 는 `notes.open` 을 1로 만들지 않았다 | `sticky://notes-changed` 신설 + 위 4개 커맨드와 창 열기/닫기에서 emit · 보드가 이벤트·창 포커스 양쪽에서 재조회 · 보드 툴바에 `+ 새 메모` · `open_note_window` 가 `open=1` 기록 · 삭제 시 그 메모의 창도 destroy · 우클릭 메뉴 닫기를 `stopPropagation` 대신 target 검사로 · **창을 만들거나 없애는 커맨드 전부 `#[tauri::command(async)]`** (동기 커맨드는 메인 스레드에서 돌아 웹뷰 IPC 콜백 안에서 WebView2 를 만들게 된다) |
 | 4 | 자동 업데이트 | — | `tauri-plugin-updater`. 확인·다운로드·설치는 전부 Rust(`update.rs`) — 웹뷰 CSP 를 열지 않아도 된다. 시작 4초 뒤 1회 자동 확인 → 메모 창 배너 · 설정 창 `UPDATE` 섹션 |
 | 5 | 이미지 마우스로 크기 조절 | — | 위젯 우하단 손잡이. 끄는 동안은 상자의 인라인 `width` 만 바꾸고(미리보기), **손을 뗄 때 트랜잭션 1회**로 `![|400](…)` 를 쓴다(절대규칙 4). 문법은 옵시디언과 동일 — 내보낸 `.md` 가 볼트에서 그대로 렌더돼야 한다 |
+
+### 신고 #1 재발 — 2026-07-26 재수정 (`fix/caret-visibility`)
+
+위 표 #1의 수정은 **불충분했다.** 복구 경로가 Tauri `onFocusChanged` 하나뿐이었는데, 다음은 **창 활성 상태가 바뀌지 않아** 그 경로가 아예 걸리지 않았다:
+
+| 경로 | 왜 캐럿이 죽나 |
+|---|---|
+| 핀·색상 버튼 클릭 | `activeElement` = 버튼. `focusEditor()` 의 가드(`active.closest('.note-controls')`)가 **정의상** 복구를 막았다 |
+| 컨트롤 바·푸터 드래그, 가장자리 리사이즈 | 네이티브 모달 루프가 도는 동안 **창은 활성 상태 그대로**이고 웹뷰만 포커스를 잃는다 → `onFocusChanged` 가 안 온다 |
+| 배너 닫기 | 배너 언마운트 → 포커스가 `<body>` 로 |
+
+근거(`@codemirror/view` 6.43.6): `drawSelection()` 이 `Prec.highest` 로 네이티브 캐럿을 죽이므로(`dist:9589`) 화면의 캐럿은 `.cm-cursor` div 하나뿐이고, 그건 `view.hasFocus`(`dist:8590` — `document.hasFocus() && root.activeElement == contentDOM`)에 100% 종속이다.
+
+처리: 가드 없는 `returnFocusToEditor()` 를 위 경로 전부에 연결 · 웹뷰 DOM `window` focus 도 청취(네이티브 모달 루프 종료를 알 수 있는 유일한 경로) · **`highlightActiveLine()` 추가** — 캐럿은 포커스 없이는 존재할 수 없으므로, 포커스와 무관하게 남는 현재 줄 표시가 "어느 라인인가"를 보장한다.
+
+**검증에서 드러난 한계 (사용자 실기 확인 필요)**: jsdom 에 레이아웃이 없어 `.cm-cursor` 엘리먼트가 테스트에서 **단 하나도 생성되지 않는다**(`RectangleMarker.forRange` 가 `getClientRects` 에서 죽는다). 즉 어떤 테스트도 "캐럿이 보인다"를 보장하지 못한다. 실질 수정처인 `NoteWindow.tsx` 의 포커스 회수 로직도 커버리지 0이다.
 
 **#4 는 사용자 조치가 남아 있다** — GitHub 저장소 Secrets 에 서명 키 2개를 등록해야 CI 가 통과한다. 등록 전까지 `release.yml` 의 "서명 키 확인" 단계에서 명시적으로 실패한다(조용히 서명 없는 인스톨러를 내보내지 않는다).
 

@@ -467,15 +467,14 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
     markOpacityAdjusted()
   }, [markOpacityAdjusted])
 
+  // 여기서는 커서를 회수하지 않는다. 슬라이더를 조작하는 동안 웹뷰는 포커스를
+  // 잃지 않으므로 회수할 것이 애초에 없고, 놓자마자 뺏으면 이어서 ←/→ 로
+  // 미세조정을 못 한다. 슬라이더를 떠난 뒤의 복귀는 다른 컨트롤이나
+  // window focus 리스너가 덮는다.
   const onOpacityHoldEnd = useCallback(() => {
     setOpacityHeld(false)
     markOpacityAdjusted()
-    // 마우스로 슬라이더를 놓은 경우에만 커서를 본문으로 돌려준다.
-    // 이 콜백은 슬라이더의 onBlur 로도 불리는데, 그때는 포커스가 이미 다른 데로
-    // 간 뒤라 건드리면 안 된다 — 그래서 아직 슬라이더가 포커스일 때만 회수한다.
-    const active = document.activeElement
-    if (active instanceof HTMLInputElement && active.type === 'range') returnFocusToEditor()
-  }, [markOpacityAdjusted, returnFocusToEditor])
+  }, [markOpacityAdjusted])
 
   const onPickColor = useCallback(
     (next: ColorIndex) => {

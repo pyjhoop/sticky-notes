@@ -53,14 +53,13 @@ export const noteEditorTheme = EditorView.theme(
 
     /* ── 캐럿 ────────────────────────────────────────────────
      * 기본 테마의 캐럿은 `border-left: 1.2px`(dist/index.js:6881)라 종이 위에서
-     * 눈에 잘 안 띈다. 캐럿 굵기용 토큰은 tokens.css(동결)에 없으므로 새로 만들지 않고,
-     * 같은 종이 위 "가는 획" 인 --checkbox-border-w(1.5px)를 그대로 쓴다.
+     * 눈에 잘 안 띈다. 굵기는 --caret-w(1.5px).
      */
     '.cm-cursor, .cm-dropCursor': {
       borderLeftColor: 'var(--ink)',
       borderLeftStyle: 'solid',
-      borderLeftWidth: 'var(--checkbox-border-w)',
-      marginLeft: 'calc(var(--checkbox-border-w) / -2)',
+      borderLeftWidth: 'var(--caret-w)',
+      marginLeft: 'calc(var(--caret-w) / -2)',
     },
 
     /*
@@ -97,16 +96,14 @@ export const noteEditorTheme = EditorView.theme(
      * 깜빡이는 캐럿의 유무가 "지금 입력을 받을 수 있는가" 를 가른다.
      *
      * 코드블록 줄은 제외한다 — --code-bg 로 이미 어두워서 겹치면 지저분해진다.
-     * 색은 종이 위 검정 알파 토큰만 쓴다. --chip-bg(.06)는 인라인 코드·태그 알약과
-     * 같은 값이라 그 위에 얹으면 알약이 사라진다. 그래서 그보다 옅은/짙은 쪽을 골랐다.
      */
     // ① 기본 테마의 하늘색 강조(`&light .cm-activeLine { #cceeff44 }`)를 끈다.
     '.cm-activeLine': { backgroundColor: 'transparent' },
     // ② 포커스가 없어도 위치는 남긴다 (옅게).
-    '.cm-line.cm-activeLine:not(.cm-code-line)': { backgroundColor: 'var(--footer-bg)' },
+    '.cm-line.cm-activeLine:not(.cm-code-line)': { backgroundColor: 'var(--active-line-bg)' },
     // ③ 포커스가 있으면 한 단계 진하게 — "지금 여기에 입력된다".
     '&.cm-focused .cm-line.cm-activeLine:not(.cm-code-line)': {
-      backgroundColor: 'var(--paper-divider)',
+      backgroundColor: 'var(--active-line-bg-focused)',
     },
     // ④ 코드블록 줄은 ①이 배경을 지워 버리므로 --code-bg 를 명시적으로 되돌린다.
     //    (editor.css 의 `.cm-code-line` 은 명시도 1이라 테마 규칙 ①에 진다)

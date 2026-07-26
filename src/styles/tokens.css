@@ -90,6 +90,10 @@
   --hover-on-paper: rgba(0, 0, 0, 0.1); /* 컨트롤 버튼 hover */
   --pin-active-bg: rgba(0, 0, 0, 0.12); /* 핀 ON 배경 */
   --chip-bg: rgba(0, 0, 0, 0.06); /* 인라인 코드 · 태그 알약 */
+  /* 현재 줄 강조 — 캐럿이 없는 동안에도 위치를 남긴다.
+     --chip-bg(.06)를 피해 위아래로 갈랐다: 알약과 같은 값이면 구별이 흐려진다 */
+  --active-line-bg: rgba(0, 0, 0, 0.045); /* 포커스 없음 — 위치만 */
+  --active-line-bg-focused: rgba(0, 0, 0, 0.08); /* 포커스 — 여기에 입력된다 */
   --checkbox-border: rgba(0, 0, 0, 0.3);
   --swatch-border: rgba(0, 0, 0, 0.14);
   --swatch-border-sm: rgba(0, 0, 0, 0.2);
@@ -193,6 +197,9 @@
   --checkbox: 16px;
   --checkbox-sm: 14px;
   --checkbox-border-w: 1.5px;
+
+  /* 에디터 캐럿 굵기. CodeMirror 기본값 1.2px 는 종이 위에서 눈에 잘 안 띈다 */
+  --caret-w: 1.5px;
 
   --palette-swatch: 22px;
   --palette-gap: 6px;

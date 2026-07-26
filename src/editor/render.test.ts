@@ -106,9 +106,18 @@ describe('EditorView 렌더', () => {
  */
 describe('캐럿 · 현재 줄', () => {
   /** 마운트된 뷰가 head 에 주입한 CodeMirror 스타일 전체 */
+  /**
+   * **우리 테마가 주입한** CSS만 모은다.
+   *
+   * head 전체를 합치면 CodeMirror 기본 테마까지 섞인다. 그러면
+   * `@keyframes cm-blink` 나 `.cm-cursorLayer .cm-cursor` 같은 단언이
+   * **우리 코드를 통째로 지워도 통과한다.** 기본 테마는 CSS 변수를 쓰지 않으므로
+   * `var(--` 를 담은 시트만 남기면 우리 것만 걸러진다.
+   */
   function injectedCss(): string {
     return Array.from(document.head.querySelectorAll('style'))
       .map((el) => el.textContent ?? '')
+      .filter((css) => css.includes('var(--'))
       .join('\n')
   }
 
@@ -166,15 +175,15 @@ describe('캐럿 · 현재 줄', () => {
     // 캐럿: 자손 셀렉터 복제본 + --ink 색 + 굵기
     expect(css).toContain('.cm-cursorLayer .cm-cursor')
     expect(css).toContain('border-left-color: var(--ink)')
-    expect(css).toContain('border-left-width: var(--checkbox-border-w)')
-    // 깜빡임
+    expect(css).toContain('border-left-width: var(--caret-w)')
+    // 깜빡임 — 기본 테마는 `animation` 단축 속성이라 롱핸드는 우리 것뿐이다.
+    // (`@keyframes cm-blink` 는 기본 테마가 정의하므로 단언하지 않는다 — 늘 통과한다)
     expect(css).toContain('animation-name: cm-blink')
-    expect(css).toContain('@keyframes cm-blink')
 
     // 현재 줄: 코드블록은 제외, 색은 tokens.css 변수만
     expect(css).toContain('.cm-line.cm-activeLine:not(.cm-code-line)')
-    expect(css).toContain('background-color: var(--footer-bg)')
-    expect(css).toContain('background-color: var(--paper-divider)')
+    expect(css).toContain('background-color: var(--active-line-bg)')
+    expect(css).toContain('background-color: var(--active-line-bg-focused)')
     // 코드블록 줄의 어두운 배경은 강조가 지워 버리면 안 된다
     expect(css).toContain('.cm-line.cm-activeLine.cm-code-line')
     expect(css).toContain('background-color: var(--code-bg)')

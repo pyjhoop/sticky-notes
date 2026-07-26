@@ -6,7 +6,7 @@
  * M0 스파이크 결론(확정)대로 구현한다:
  *   투명도      CSS opacity — **종이 루트 엘리먼트**에 건다. 창 자체가 아니다
  *   라운드 코너  CSS border-radius 10px + DWMWA_WINDOW_CORNER_PREFERENCE=DONOTROUND
- *   그림자      CSS drop-shadow + 사방 24px 투명 여백
+ *   그림자      **폐기.** 창 = 종이, 사방 여백 0 (2026-07-26 사용자 지시 · note.css 머리말)
  * 네이티브 폴백(`setWindowOpacity`)은 존재하지만 쓰지 않는다.
  *
  * **소유: 트랙 C (M1 · M4).**
@@ -49,6 +49,16 @@ import '../styles/note.css'
 const SAVE_DEBOUNCE_MS = 400
 /** 메타(색·투명도·핀) 저장 디바운스 — 슬라이더가 초당 수십 번 바뀐다 */
 const META_DEBOUNCE_MS = 300
+/**
+ * 투명도 미리보기 유지 시간 — 마지막 변경 이후.
+ *
+ * autoFade가 켜져 있으면 포커스된 창은 항상 100%다. 그런데 슬라이더를 잡거나
+ * `Ctrl+Shift+휠`을 굴리는 순간에도 창은 **포커스 상태**라 목표값이 화면에 반영되지
+ * 않고, 포커스를 잃어야 비로소 보였다(사용자 신고). 조절 중에는 autoFade override를
+ * 건너뛰어 목표값을 즉시 보여주고, 조절이 끝나면 이 시간 뒤에 autoFade 규칙으로
+ * 돌아간다(복귀도 `--transition-fade` 180ms를 그대로 탄다).
+ */
+const OPACITY_PREVIEW_MS = 1000
 
 /** `startResizeDragging()`이 받는 8방향. */
 type ResizeDir =
@@ -105,6 +115,30 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   const [alertDismissed, setAlertDismissed] = useState(false)
   // 백엔드 호출 실패 — 조용히 넘기지 않는다 (ipc 폴백 제거 · CLAUDE.md "흔한 함정")
   const [error, setError] = useState<string | null>(null)
+
+  // ── 투명도 미리보기 ─────────────────────────────────────
+  // held   : 슬라이더를 잡고 있는 동안 (pointerdown ~ pointerup/cancel)
+  // recent : 마지막 변경 후 OPACITY_PREVIEW_MS 동안 (키보드 조작 · Ctrl+Shift+휠)
+  // 둘 중 하나라도 참이면 autoFade override를 건너뛰고 목표값을 그대로 보여준다.
+  const [opacityHeld, setOpacityHeld] = useState(false)
+  const [opacityRecent, setOpacityRecent] = useState(false)
+  const previewTimer = useRef<number | null>(null)
+
+  const markOpacityAdjusted = useCallback(() => {
+    setOpacityRecent(true)
+    if (previewTimer.current !== null) window.clearTimeout(previewTimer.current)
+    previewTimer.current = window.setTimeout(() => {
+      previewTimer.current = null
+      setOpacityRecent(false)
+    }, OPACITY_PREVIEW_MS)
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (previewTimer.current !== null) window.clearTimeout(previewTimer.current)
+    },
+    [],
+  )
 
   // ── 본문 저장 (400ms 디바운스 + 강제 flush) ─────────────
   const bodyRef = useRef('')
@@ -214,6 +248,8 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey || !e.shiftKey) return
       e.preventDefault()
+      // 휠은 pointerup이 없다 — 마지막 변경 기준 타이머만으로 미리보기를 유지한다.
+      markOpacityAdjusted()
       setOpacity((prev) => {
         const next = clampOpacity(prev + (e.deltaY < 0 ? OPACITY_STEP : -OPACITY_STEP))
         if (next !== prev) pushMeta({ opacity: next })
@@ -222,7 +258,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
     }
     window.addEventListener('wheel', onWheel, { passive: false })
     return () => window.removeEventListener('wheel', onWheel)
-  }, [pushMeta])
+  }, [markOpacityAdjusted, pushMeta])
 
   // ── 포커스/블러 ─────────────────────────────────────────
   // autoFade OFF → 항상 note.opacity
@@ -315,11 +351,24 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   const onOpacityChange = useCallback(
     (value: number) => {
       const next = clampOpacity(value)
+      markOpacityAdjusted()
       setOpacity(next)
       pushMeta({ opacity: next })
     },
-    [pushMeta],
+    [markOpacityAdjusted, pushMeta],
   )
+
+  // 슬라이더를 잡고 있는 동안은 값이 안 바뀌어도 미리보기를 유지한다
+  // (드래그가 길어져 타이머가 만료되면 화면이 100%로 튀어 오른다).
+  const onOpacityHoldStart = useCallback(() => {
+    setOpacityHeld(true)
+    markOpacityAdjusted()
+  }, [markOpacityAdjusted])
+
+  const onOpacityHoldEnd = useCallback(() => {
+    setOpacityHeld(false)
+    markOpacityAdjusted()
+  }, [markOpacityAdjusted])
 
   const onPickColor = useCallback(
     (next: ColorIndex) => {
@@ -358,7 +407,11 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   }, [])
 
   // ── 렌더 ────────────────────────────────────────────────
-  const effectiveOpacity = autoFade && focused ? 100 : opacity
+  // autoFade OFF                → 항상 note.opacity (원래 경로, 손대지 않는다)
+  // autoFade ON + 조절 중        → 목표값을 즉시 보여준다 (미리보기)
+  // autoFade ON + 그 외 · 포커스 → 100%
+  const adjustingOpacity = opacityHeld || opacityRecent
+  const effectiveOpacity = autoFade && focused && !adjustingOpacity ? 100 : opacity
 
   const rootStyle = useMemo(
     () =>
@@ -373,7 +426,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
 
   return (
     <div className={`note-root${paletteOpen ? ' is-palette-open' : ''}`} style={rootStyle}>
-      {/* 투명 여백 = 네이티브 리사이즈 그랩 존 */}
+      {/* 리사이즈 그랩 존 — 종이 가장자리 안쪽 6px(코너 8px). 여백은 없앴다 (note.css 머리말) */}
       {RESIZE_EDGES.map(({ dir, cls }) => (
         <div
           key={cls}
@@ -386,7 +439,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
         />
       ))}
 
-      {/* 그림자 + 투명도는 종이 래퍼에 건다. 창 자체가 아니다. */}
+      {/* 투명도는 종이 래퍼에 건다. 창 자체가 아니다. */}
       <div className="note-shadow">
         <div className="note-paper">
           <ControlBar
@@ -395,6 +448,8 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
             paletteOpen={paletteOpen}
             onTogglePin={onTogglePin}
             onOpacityChange={onOpacityChange}
+            onOpacityHoldStart={onOpacityHoldStart}
+            onOpacityHoldEnd={onOpacityHoldEnd}
             onTogglePalette={() => setPaletteOpen((v) => !v)}
             onNewNote={onNewNote}
             onClose={onClose}

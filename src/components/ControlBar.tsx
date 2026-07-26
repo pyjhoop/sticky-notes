@@ -19,6 +19,10 @@ export interface ControlBarProps {
   paletteOpen: boolean
   onTogglePin: () => void
   onOpacityChange: (value: number) => void
+  /** 슬라이더를 잡았다 — 조절이 끝날 때까지 투명도 미리보기를 유지한다 */
+  onOpacityHoldStart: () => void
+  /** 슬라이더를 놓았다 */
+  onOpacityHoldEnd: () => void
   onTogglePalette: () => void
   onNewNote: () => void
   onClose: () => void
@@ -32,6 +36,8 @@ export default function ControlBar({
   paletteOpen,
   onTogglePin,
   onOpacityChange,
+  onOpacityHoldStart,
+  onOpacityHoldEnd,
   onTogglePalette,
   onNewNote,
   onClose,
@@ -65,6 +71,14 @@ export default function ControlBar({
           value={opacity}
           aria-label="투명도"
           onChange={(e) => onOpacityChange(Number(e.target.value))}
+          // 잡고 있는 동안은 값이 안 변해도 미리보기를 유지한다.
+          // range 입력은 pointerdown에서 포인터를 캡처하므로 pointerup도 이 요소로 온다.
+          onPointerDown={onOpacityHoldStart}
+          onPointerUp={onOpacityHoldEnd}
+          onPointerCancel={onOpacityHoldEnd}
+          onLostPointerCapture={onOpacityHoldEnd}
+          // 키보드 조작(←/→)은 onChange → 타이머 경로를 탄다. 포커스가 빠지면 잡은 상태를 푼다.
+          onBlur={onOpacityHoldEnd}
         />
         <span className="note-opacity__value">{opacity}%</span>
       </div>

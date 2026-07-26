@@ -162,8 +162,15 @@ jobs:
           }
           $signature = (Get-Content $sigPath -Raw).Trim()
 
-          # 파일명에 공백이 있다(productName = "Sticky Notes"). URL 로 쓰려면 인코딩해야 한다.
-          $name = [System.Uri]::EscapeDataString($exe.Name)
+          # 파일명에 공백이 있다(productName = "Sticky Notes").
+          #
+          # **GitHub 은 릴리스 자산 이름에서 `[A-Za-z0-9._-]` 밖의 문자를 `.` 으로 바꿔
+          # 저장한다.** 그래서 로컬 파일명을 퍼센트 인코딩하면
+          #   .../Sticky%20Notes_1.0.12_x64-setup.exe  → 404
+          #   .../Sticky.Notes_1.0.12_x64-setup.exe    → 200
+          # 가 된다. v1.0.12 의 latest.json 이 실제로 이렇게 깨졌다.
+          # 업로드된 뒤의 이름을 그대로 계산한다 — 결과는 이미 URL 안전 문자뿐이다.
+          $name = $exe.Name -replace '[^A-Za-z0-9._-]', '.'
           $tag  = '${{ steps.ver.outputs.tag }}'
           $url  = "https://github.com/${{ github.repository }}/releases/download/$tag/$name"
 
@@ -209,3 +216,25 @@ jobs:
             src-tauri/target/release/bundle/nsis/*.exe.sig
             latest.json
           fail_on_unmatched_files: true
+
+      # latest.json 이 가리키는 URL 이 실제로 존재하는지 확인한다.
+      #
+      # v1.0.12 에서 여기가 조용히 깨졌다 — 릴리스는 초록불인데 자산 URL 이 404 라
+      # 배포된 앱은 "업데이트가 있다는데 받아지지 않는" 상태가 됐다.
+      # 자동 업데이트가 망가진 릴리스는 실패로 친다.
+      - name: 업데이트 URL 확인
+        shell: pwsh
+        run: |
+          $url = (Get-Content latest.json -Raw | ConvertFrom-Json).platforms.'windows-x86_64'.url
+          Write-Host "확인: $url"
+          # 릴리스 자산이 올라오는 데 잠깐 걸릴 수 있다.
+          foreach ($attempt in 1..5) {
+            try {
+              $res = Invoke-WebRequest -Uri $url -Method Head -MaximumRedirection 5
+              if ($res.StatusCode -eq 200) { Write-Host 'OK 200'; exit 0 }
+            } catch {
+              Write-Host "$attempt 회차 실패: $($_.Exception.Message)"
+            }
+            Start-Sleep -Seconds 5
+          }
+          throw "latest.json 의 url 을 받을 수 없다: $url — 자산 이름 규칙이 바뀌었는지 확인하라."

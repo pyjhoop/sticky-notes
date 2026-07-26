@@ -1,5 +1,5 @@
 /**
- * 마크다운 파생 — 제목, `#태그`, `[[위키링크]]`, 보드 카드 미리보기.
+ * 마크다운 파생 — `#태그` · `[[위키링크]]` 추출.
  *
  * **소유: 트랙 B (M3).**
  *
@@ -9,11 +9,17 @@
  * 방식은 "마스킹"이다 — 코드 구간을 같은 길이의 공백으로 덮은 사본을 만들고
  * 그 사본에만 정규식을 돌린다. 원본 문자열은 절대 바꾸지 않는다
  * (CLAUDE.md 절대규칙 3 — 마크다운 원문이 진실이다).
+ *
+ * ─────────────────────────────────────────────────────────────
+ * 제목·미리보기 파생은 여기에 없다
+ *
+ * 통합 게이트에서 `deriveTitle`/`derivePreview`를 **삭제했다.** 호출처가 0건인데
+ * `src-tauri/src/notes.rs`의 `derive_title`/`derive_preview`와 규칙이 달랐다
+ * (마커 제거 범위, 미리보기 상한 120 vs 160). 보드 카드가 그리는 값은 Rust가 파생한
+ * `NoteSummary.title`/`preview`이므로 **진실의 원천은 Rust 하나**다.
+ * 프론트에서 제목이 필요하면 `saveNote`가 돌려주는 `SaveResult.title`을 쓴다.
+ * ─────────────────────────────────────────────────────────────
  */
-
-/** 제목 파생 규칙: 첫 `# 제목` → 없으면 첫 비어있지 않은 줄 → 80자 절단 → 없으면 `제목 없음` */
-export const UNTITLED = '제목 없음'
-export const TITLE_MAX = 80
 
 /** `#태그` — 한글·영숫자·`_`로 시작, 이어서 `/`·`-` 허용. 앞에 문자/숫자/`#`/`/`가 오면 태그가 아니다. */
 const TAG_RE = /(?<![\p{L}\p{N}_#/])#([\p{L}\p{N}_][\p{L}\p{N}_/-]*)/gu
@@ -24,11 +30,6 @@ const WIKILINK_RE = /\[\[([^[\]\n]+)\]\]/g
 /** ``` 또는 ~~~ 로 시작하는 펜스 줄 */
 const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})/
 const FENCE_CLOSE_RE = /^ {0,3}(`{3,}|~{3,})[ \t]*\r?$/
-
-/** 수평선 — 미리보기에서 뺀다 */
-const THEMATIC_BREAK_RE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*\r?$/
-
-const ATX_LINE_RE = /^ {0,3}#{1,6}[ \t]+\S/
 
 /** 같은 길이의 공백으로 덮는다 — 위치·개행이 어긋나지 않게. */
 function blank(text: string): string {
@@ -149,56 +150,6 @@ export function maskCode(body: string): string {
     .join('\n')
 }
 
-/** 제목으로 쓸 줄의 인덱스. 없으면 -1. 코드블록 줄은 후보에서 빠진다. */
-function findTitleLineIndex(body: string): number {
-  const masked = maskFencedCode(body).split('\n')
-  for (let i = 0; i < masked.length; i += 1) {
-    if (ATX_LINE_RE.test(masked[i])) return i
-  }
-  for (let i = 0; i < masked.length; i += 1) {
-    if (masked[i].trim().length > 0) return i
-  }
-  return -1
-}
-
-/** 한 줄에서 마크다운 마커를 걷어내고 평문만 남긴다. */
-function stripMarkers(line: string): string {
-  return line
-    .replace(/\r$/, '')
-    .replace(/^ {0,3}#{1,6}[ \t]+/, '') // ATX 제목
-    .replace(/^\s*>[ \t]?/, '') // 인용
-    .replace(/^\s*(?:[-*+]|\d+[.)])[ \t]+/, '') // 리스트 불릿
-    .replace(/^\[[ xX]\][ \t]*/, '') // 태스크 마커
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '') // 이미지
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // 링크 → 텍스트
-    .replace(/\[\[([^[\]\n]+)\]\]/g, (_all, target: string) => {
-      const parts = target.split('|')
-      return (parts.length > 1 ? parts[parts.length - 1] : parts[0]).trim()
-    })
-    .replace(/`+([^`]*)`+/g, '$1') // 인라인 코드
-    .replace(/(\*\*\*|___)(.+?)\1/g, '$2')
-    .replace(/(\*\*|__)(.+?)\1/g, '$2')
-    .replace(/(\*|_)(.+?)\1/g, '$2')
-    .replace(/~~(.+?)~~/g, '$1')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-/**
- * 본문에서 보드용 제목을 파생한다.
- *
- * 첫 `# 제목` → 없으면 첫 비어있지 않은 줄 → 80자 절단 → 없으면 `제목 없음`.
- * 코드블록으로 시작하는 본문은 펜스 줄을 제목으로 쓰지 않는다.
- */
-export function deriveTitle(body: string): string {
-  const index = findTitleLineIndex(body)
-  if (index < 0) return UNTITLED
-
-  const text = stripMarkers(body.split('\n')[index])
-  if (!text) return UNTITLED
-  return text.length > TITLE_MAX ? text.slice(0, TITLE_MAX) : text
-}
-
 /** 순서를 지키며 중복을 제거한다. */
 function unique(values: string[]): string[] {
   const seen = new Set<string>()
@@ -242,33 +193,4 @@ export function extractLinks(body: string): string[] {
     if (target) found.push(target)
   }
   return unique(found)
-}
-
-/**
- * 보드 카드 미리보기 — 마크다운 마커를 걷어낸 평문 한 덩어리.
- *
- * 제목으로 쓰인 줄과 코드블록은 빼고, 남은 줄을 ` · `로 잇는다
- * (디자인 354행 `디자인 리뷰 11:00 · 옵시디언 플러그인 문서 · 전기요금 자동이체`).
- * 결과 길이는 `maxLength`를 넘지 않는다 — 넘치면 끝에 `…`를 붙인다.
- */
-export function derivePreview(body: string, maxLength = 120): string {
-  if (maxLength <= 0) return ''
-
-  const titleIndex = findTitleLineIndex(body)
-  const masked = maskFencedCode(body).split('\n')
-  const lines = body.split('\n')
-  const parts: string[] = []
-
-  for (let i = 0; i < lines.length; i += 1) {
-    if (i === titleIndex) continue
-    if (masked[i].trim().length === 0) continue // 빈 줄 · 코드블록
-    if (THEMATIC_BREAK_RE.test(lines[i])) continue
-
-    const text = stripMarkers(lines[i])
-    if (text) parts.push(text)
-  }
-
-  const joined = parts.join(' · ')
-  if (joined.length <= maxLength) return joined
-  return joined.slice(0, maxLength - 1).trimEnd() + '…'
 }

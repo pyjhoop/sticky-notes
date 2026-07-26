@@ -270,6 +270,9 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 |---|---|---|---|
 | 2026-07-26 | `src/styles/tokens.css` | `--range-thumb-bg` `--range-thumb-border` **추가** | M0 검증에서 `global.css`의 슬라이더 thumb 하드코딩 색 2건 적발. 순수 추가라 기존 변수 불변, 트랙 스폰 **전**에 처리해 리베이스 비용 0 |
 | 2026-07-26 | `src/styles/tokens.css` | `--dark-knob-on` `--on-accent` **추가** | 트랙 D 검증에서 `board.css`의 `#fff` 2건 적발. 흰색은 D뿐 아니라 **B(체크박스 마크 design:74,78,82,129)·C(메모 닫기 hover design:55)도 필요**하므로 세 트랙이 각자 하드코딩하기 전에 선제 추가. 순수 추가라 기존 변수 불변 |
+| 2026-07-26 | `src/lib/ipc.ts` | `withFallback` 헬퍼 + 더미 데이터 + 호출 22곳 **삭제** | 통합 게이트 #1. 백엔드가 완성돼 폴백이 해로워졌다 — invoke 실패가 삼켜지고 화면에 더미가 떠서 디버깅이 불가능하다. 이제 실패는 `IpcError`로 던져지고 호출부가 한국어 배너로 노출한다 (`src/lib/errors.ts`) |
+| 2026-07-26 | `src/lib/ipc.ts` | `Settings`에 `shortcutNewNote` `shortcutShowBoard` `shortcutToggleAlwaysOnTop` **추가**, `SHORTCUT_SETTING_KEY` 상수 추가 | 통합 게이트 #2. 단축키 재바인딩이 저장만 되고 읽히지 않아 재시작하면 사라졌다(게다가 key가 `shortcut.newNote`라 `put_setting`이 거부해 저장조차 안 됐다). `Settings` 필드로 만들어 쓰기·읽기를 한 경로로 맞물렸다. 순수 추가라 기존 필드 불변 |
+| 2026-07-26 | `src/lib/ipc.ts` | `getShortcutFailures` 의미 확장 (등록 실패 + **기본값 폴백**) | 통합 게이트 #2. 저장된 단축키가 안 먹혀 기본값으로 되돌린 경우도 사용자에게 알려야 한다. 타입은 그대로(`ShortcutBinding[]`), 담기는 조건만 넓어졌다 |
 
 ### 계약을 바꿔야 할 때
 

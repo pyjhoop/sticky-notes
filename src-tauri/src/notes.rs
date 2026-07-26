@@ -113,18 +113,31 @@ pub struct SearchQuery {
 // `save_note`가 tags/links 테이블을 갱신해야 하므로 Rust에도 필요하다.
 // ─────────────────────────────────────────────────────────────
 
-/// 펜스 줄이면 `(펜스 문자, 개수)`.
-fn fence_info(line: &str) -> Option<(char, usize)> {
-    let trimmed = line.trim_start();
-    // CommonMark — 들여쓰기 3칸까지만 펜스로 인정한다
-    if line.len() - trimmed.len() > 3 {
+/// 블록 마커 앞에 허용되는 들여쓰기 — **스페이스만** 센다.
+///
+/// `trim_start()`를 쓰면 탭도 걷어내서 탭 1개(길이 1)가 "3칸 이하"로 통과한다.
+/// CommonMark에서 탭은 4칸으로 펼쳐지므로 탭으로 들여쓴 줄은 펜스가 아니라
+/// **들여쓰기 코드블록**이다. 프론트 `src/lib/markdown.ts`의 `^ {0,3}`이 이미
+/// 스페이스만 허용하고 있어, 이 함수가 규칙 불일치의 원인이었다.
+///
+/// 스페이스가 아닌 문자가 나오기 전까지의 스페이스 개수와, 그 위치의 나머지 문자열.
+fn after_space_indent(line: &str) -> Option<&str> {
+    let indent = line.chars().take_while(|&c| c == ' ').count();
+    if indent > 3 {
         return None;
     }
-    let c = trimmed.chars().next()?;
+    // 스페이스는 1바이트라 개수 = 바이트 오프셋이다
+    Some(&line[indent..])
+}
+
+/// 펜스 줄이면 `(펜스 문자, 개수)`.
+fn fence_info(line: &str) -> Option<(char, usize)> {
+    let rest = after_space_indent(line)?;
+    let c = rest.chars().next()?;
     if c != '`' && c != '~' {
         return None;
     }
-    let n = trimmed.chars().take_while(|&x| x == c).count();
+    let n = rest.chars().take_while(|&x| x == c).count();
     if n < 3 {
         return None;
     }
@@ -135,8 +148,8 @@ fn fence_info(line: &str) -> Option<(char, usize)> {
 fn is_closing_fence(line: &str, open_char: char, open_len: usize) -> bool {
     match fence_info(line) {
         Some((c, n)) if c == open_char && n >= open_len => {
-            let rest: String = line.trim_start().chars().skip(n).collect();
-            rest.trim().is_empty()
+            let rest = after_space_indent(line).unwrap_or(line);
+            rest.chars().skip(n).all(char::is_whitespace)
         }
         _ => false,
     }
@@ -364,11 +377,10 @@ fn truncate_chars(s: &str, max: usize) -> String {
 }
 
 /// ATX 제목이면 `#`을 벗겨 돌려준다.
+///
+/// 들여쓰기는 펜스와 같은 규칙 — 스페이스 3칸까지만 (`^ {0,3}#{1,6}` · 프론트 `ATX_LINE_RE`).
 fn heading_text(line: &str) -> Option<String> {
-    let t = line.trim_start();
-    if line.len() - t.len() > 3 {
-        return None;
-    }
+    let t = after_space_indent(line)?;
     let hashes = t.chars().take_while(|&c| c == '#').count();
     if hashes == 0 || hashes > 6 {
         return None;
@@ -985,6 +997,36 @@ let x = 1;
 
         // 3칸은 들여쓰기 코드가 아니다
         assert_eq!(extract_tags("문단\n\n   #세칸태그"), vec!["세칸태그"]);
+    }
+
+    /// 통합 게이트 #3 — 탭으로 들여쓴 펜스는 펜스가 아니다.
+    ///
+    /// `fence_info`가 `trim_start()`로 들여쓰기를 재던 시절엔 탭 1개가 "1칸"으로 계산돼
+    /// 펜스로 인정됐다. 프론트 `FENCE_OPEN_RE`(`^ {0,3}`)는 스페이스만 허용하므로
+    /// CommonMark 기준으로 **프론트가 옳다.** 아래 3개는 검증자가 실측한 불일치 입력이다.
+    #[test]
+    fn tab_indented_fence_is_not_a_fence() {
+        // ① 여는 펜스가 탭 들여쓰기 → 코드블록이 열리지 않는다
+        assert_eq!(extract_tags("\t```\n#진짜태그"), vec!["진짜태그"]);
+
+        // ② 닫는 펜스가 탭 들여쓰기 → 블록이 닫히지 않고 끝까지 코드다
+        assert!(extract_tags("```\n#코드안\n\t```\n#바깥태그").is_empty());
+
+        // ③ 물결 펜스도 같다
+        assert_eq!(extract_tags("\t~~~\n#태그티엘"), vec!["태그티엘"]);
+
+        // 스페이스 3칸까지는 펜스다 / 4칸은 들여쓰기 코드블록이라 펜스가 아니다
+        assert!(extract_tags("   ```\n#코드안\n   ```").is_empty());
+        assert_eq!(extract_tags("    ```\n#진짜태그2"), vec!["진짜태그2"]);
+    }
+
+    /// ATX 제목도 같은 들여쓰기 규칙을 쓴다 (프론트 `ATX_LINE_RE`).
+    #[test]
+    fn tab_indented_heading_is_not_a_heading() {
+        // 탭 들여쓰기 → 제목이 아니라 평문. 첫 비어있지 않은 줄로 떨어진다
+        assert_eq!(derive_title("문단\n\t# 제목처럼 보이는 줄"), "문단");
+        // 스페이스 3칸까지는 제목이다
+        assert_eq!(derive_title("   # 세칸 제목"), "세칸 제목");
     }
 
     #[test]

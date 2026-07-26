@@ -194,26 +194,68 @@ fn run_len(chars: &[char], from: usize) -> usize {
     n
 }
 
+/// 공백 4칸(또는 탭 1개)으로 시작하는 줄 — 들여쓰기 코드블록 후보.
+fn is_indented_line(line: &str) -> bool {
+    line.starts_with("    ") || line.starts_with('\t')
+}
+
 /// 코드블록 **바깥**의 줄만, 인라인 코드를 제거한 상태로 돌려준다.
 ///
 /// 제목 파생 · `#태그` · `[[링크]]` 추출은 전부 이 결과 위에서 돈다.
+///
+/// 제외 대상은 두 가지다.
+/// 1. 펜스 코드블록 (```` ``` ````, `~~~`)
+/// 2. **들여쓰기 코드블록** — 4칸(또는 탭 1개) 이상 들여쓴 줄
+///
+/// 2번은 CommonMark대로 **문단 안에서는 시작될 수 없다.** 앞줄이 비어 있거나
+/// 문서 시작일 때만 블록이 열린다 (문단 연속줄의 들여쓰기는 코드가 아니다).
+/// 한 번 열린 블록은 빈 줄로 끊기지 않고, 들여쓰지 않은 비어있지 않은 줄에서 닫힌다.
+///
+/// 리스트 문맥은 추적하지 않는다. `- 상위` 바로 다음 줄의 들여쓰기는 앞줄이
+/// 비어 있지 않으므로 코드로 오인하지 않는다. 다만 `- 상위` + 빈 줄 + 들여쓴 줄
+/// (느슨한 리스트의 두 번째 문단)은 여기서 코드로 본다 — 리스트 문맥을 따라가지
+/// 않는 대신 프론트 `src/lib/markdown.ts`의 `maskIndentedCode`와 **결과가 같은
+/// 쪽**을 택했다. tags/links의 진실의 원천이 Rust이므로 프론트와 규칙이
+/// 어긋나는 쪽이 더 나쁘다.
 pub fn plain_lines(body: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut fence: Option<(char, usize)> = None;
+    // 문서 시작은 "앞에 빈 줄이 있는 것"과 같게 본다
+    let mut prev_blank = true;
+    let mut in_indented = false;
+
     for line in body.lines() {
         match fence {
             Some((c, n)) => {
                 if is_closing_fence(line, c, n) {
                     fence = None;
                 }
+                // 펜스 줄은 프론트에서 공백으로 덮이므로 빈 줄로 센다
+                prev_blank = true;
+                continue;
             }
             None => {
                 if let Some(info) = fence_info(line) {
                     fence = Some(info);
-                } else {
-                    out.push(strip_inline_code(line));
+                    prev_blank = true;
+                    continue;
                 }
             }
+        }
+
+        let is_blank = line.trim().is_empty();
+        if in_indented {
+            // 빈 줄은 블록을 끊지 않는다 — 다음 들여쓰기 줄이 오면 계속 코드다
+            if !is_blank && !is_indented_line(line) {
+                in_indented = false;
+            }
+        } else if prev_blank && is_indented_line(line) {
+            in_indented = true;
+        }
+        prev_blank = is_blank;
+
+        if !in_indented {
+            out.push(strip_inline_code(line));
         }
     }
     out
@@ -898,6 +940,53 @@ let x = 1;
         assert_eq!(extract_links(body), vec!["진짜링크"]);
     }
 
+    /// 4칸 들여쓰기 코드블록 내부의 `#태그`·`[[링크]]`도 추출되지 않는다.
+    /// (프론트 `src/lib/markdown.ts`의 `maskIndentedCode`와 같은 규칙)
+    #[test]
+    fn indented_code_block_content_is_excluded() {
+        let body = "\
+일반 문단
+
+    #태그 [[링크]]
+";
+        assert!(extract_tags(body).is_empty());
+        assert!(extract_links(body).is_empty());
+
+        // 탭 1개도 들여쓰기 코드블록이다
+        assert!(extract_tags("문단\n\n\t#탭가짜").is_empty());
+
+        // 빈 줄로 끊기지 않고, 들여쓰지 않은 줄에서 닫힌다
+        let body = "\
+문단
+
+    #코드안1
+
+    #코드안2
+바깥 #진짜
+";
+        assert_eq!(extract_tags(body), vec!["진짜"]);
+
+        // 문서 맨 처음의 들여쓰기도 블록을 연다
+        assert!(extract_tags("    #문서시작코드").is_empty());
+    }
+
+    /// 문단 연속줄의 들여쓰기는 코드가 아니다 — 앞줄이 비어 있지 않으면 블록이 열리지 않는다.
+    #[test]
+    fn indented_continuation_line_is_not_code() {
+        let body = "\
+문단 첫 줄
+    이어지는 줄 #진짜태그 [[진짜링크]]
+";
+        assert_eq!(extract_tags(body), vec!["진짜태그"]);
+        assert_eq!(extract_links(body), vec!["진짜링크"]);
+
+        // 리스트 하위 항목도 마찬가지 (앞줄이 비어 있지 않다)
+        assert_eq!(extract_tags("- 상위\n    - 하위 #하위태그"), vec!["하위태그"]);
+
+        // 3칸은 들여쓰기 코드가 아니다
+        assert_eq!(extract_tags("문단\n\n   #세칸태그"), vec!["세칸태그"]);
+    }
+
     #[test]
     fn unclosed_backtick_is_literal_text() {
         // 닫히지 않은 백틱은 코드가 아니다 — 뒤의 태그가 살아 있어야 한다
@@ -1131,17 +1220,51 @@ let x = 1;
     }
 
     #[test]
-    fn search_excludes_deleted_and_escapes_wildcards() {
+    fn search_excludes_deleted() {
         let mut conn = open_memory().unwrap();
         let id = seed(&mut conn, "# 지운 것\n비밀");
         seed(&mut conn, "# 살아있는 것\n100% 완료");
         soft_delete_note_in(&conn, &id).unwrap();
 
         assert!(search(&conn, SearchMode::Text, "비밀").is_empty());
-        // `%`는 와일드카드가 아니라 글자로 취급되어야 한다
-        assert_eq!(search(&conn, SearchMode::Text, "100%"), vec!["살아있는 것"]);
-        assert!(search(&conn, SearchMode::Text, "%완료").len() <= 1);
-        assert!(search(&conn, SearchMode::Text, "없는말%").is_empty());
+        assert_eq!(search(&conn, SearchMode::Text, "완료"), vec!["살아있는 것"]);
+    }
+
+    /// `like_pattern`의 와일드카드 이스케이프 증명.
+    ///
+    /// `%` `_` `\`는 LIKE 메타문자가 **아니라 글자**로 취급되어야 한다.
+    /// 이스케이프가 없으면 아래 단언들은 전부 깨진다 —
+    /// `%`는 "무엇이든", `_`는 "아무 한 글자"가 되어 엉뚱한 메모가 잡힌다.
+    #[test]
+    fn search_escapes_like_wildcards() {
+        let mut conn = open_memory().unwrap();
+        seed(&mut conn, "# 퍼센트\n진행률 50% 달성");
+        seed(&mut conn, "# 언더바\n식별자 a_c 규칙");
+        seed(&mut conn, "# 세글자\nabc 라고 쓴다");
+        seed(&mut conn, "# 역슬래시\n경로 C:\\temp 참고");
+        seed(&mut conn, "# 평범\n기호 없는 본문");
+
+        // 기준선 — 필터가 없으면 5건 전부
+        assert_eq!(search(&conn, SearchMode::Text, "").len(), 5);
+
+        // `%` — 이스케이프가 없으면 `%%%`가 되어 5건 전부 잡힌다
+        assert_eq!(search(&conn, SearchMode::Text, "%"), vec!["퍼센트"]);
+        assert_eq!(search(&conn, SearchMode::Text, "50%"), vec!["퍼센트"]);
+        // 글자 사이의 `%`도 "무엇이든"이 아니다 — 이스케이프가 없으면 퍼센트가 잡힌다
+        assert_eq!(search(&conn, SearchMode::Text, "진행%달성").len(), 0);
+        assert_eq!(search(&conn, SearchMode::Text, "없는말%").len(), 0);
+
+        // `_` — 이스케이프가 없으면 `a_c`가 `abc`도 잡는다
+        assert_eq!(search(&conn, SearchMode::Text, "a_c"), vec!["언더바"]);
+        assert_eq!(search(&conn, SearchMode::Text, "abc"), vec!["세글자"]);
+        // `_` 하나만 검색 — 이스케이프가 없으면 "한 글자 이상"이라 5건 전부 잡힌다
+        assert_eq!(search(&conn, SearchMode::Text, "_"), vec!["언더바"]);
+
+        // 이스케이프 문자 `\` 자체도 글자로 찾을 수 있어야 한다
+        assert_eq!(search(&conn, SearchMode::Text, "\\"), vec!["역슬래시"]);
+        assert_eq!(search(&conn, SearchMode::Text, "C:\\temp"), vec!["역슬래시"]);
+        // `\` 다음 글자가 먹히지 않는다 (`\t`가 `t`로 붕괴하면 `C:temp`가 되어 0건)
+        assert_eq!(search(&conn, SearchMode::Text, "C:\\t").len(), 1);
     }
 
     #[test]

@@ -21,12 +21,14 @@ import {
   applyWindowBackdrop,
   backupDb,
   exportMarkdown,
+  getAutostart,
   getDbPath,
   getSettings,
   getShortcutFailures,
   getShortcuts,
   isTauri,
   revealPath,
+  setAutostart,
   setSetting,
   setShortcut,
   type Settings,
@@ -61,6 +63,12 @@ export default function SettingsWindow() {
   const [drafts, setDrafts] = useState<Partial<Record<ShortcutAction, string>>>({})
   const [notice, setNotice] = useState<Notice | null>(null)
   const [busy, setBusy] = useState(false)
+  /**
+   * 자동 시작 (M7). 진실의 원천은 DB가 아니라 **OS 등록 상태**다 —
+   * 사용자가 작업 관리자에서 껐을 수도 있으므로 `get_autostart` 로 읽는다.
+   * `null` 이면 아직 읽지 못한 상태다.
+   */
+  const [autostart, setAutostartState] = useState<boolean | null>(null)
 
   // mica → acrylic → 불투명. 결과를 body에 실어 배경 규칙을 전환한다 (settings.css).
   useEffect(() => {
@@ -98,6 +106,11 @@ export default function SettingsWindow() {
       .catch(() => {
         // getShortcuts가 이미 같은 사유로 실패했다 — 배너를 덮어쓰지 않는다.
       })
+    getAutostart()
+      .then(setAutostartState)
+      .catch((e) =>
+        setNotice({ text: failureNotice('자동 시작 상태를 읽지 못했습니다', e), warn: true }),
+      )
   }, [])
 
   /** 로컬 상태를 먼저 반영하고 백엔드에 흘린다. 저장 실패는 배너로 알린다. */
@@ -110,6 +123,31 @@ export default function SettingsWindow() {
     },
     [],
   )
+
+  /**
+   * 자동 시작 토글 (M7).
+   *
+   * 레지스트리 쓰기가 실패할 수 있으므로 낙관적 반영을 하지 않는다 —
+   * 백엔드가 돌려준 값만 화면에 쓰고, 실패는 notice 배너로 반드시 노출한다.
+   */
+  const onToggleAutostart = useCallback(async (next: boolean) => {
+    try {
+      const applied = await setAutostart(next)
+      setAutostartState(applied)
+      // DB의 `autostart` 설정도 맞춰 둔다 — 설정 화면 두 경로가 어긋나지 않도록.
+      setSettings((prev) => (prev ? { ...prev, autostart: applied } : prev))
+      void setSetting('autostart', String(applied)).catch((e) =>
+        setNotice({ text: failureNotice('설정을 저장하지 못했습니다', e), warn: true }),
+      )
+      setNotice({
+        text: applied
+          ? '윈도우 시작 시 자동으로 실행됩니다.'
+          : '윈도우 시작 시 자동 실행을 껐습니다.',
+      })
+    } catch (e) {
+      setNotice({ text: failureNotice('자동 시작을 바꾸지 못했습니다', e), warn: true })
+    }
+  }, [])
 
   const pickDirectory = useCallback(async (title: string): Promise<string | null> => {
     if (!isTauri()) {
@@ -243,6 +281,19 @@ export default function SettingsWindow() {
               checked={settings?.autoFade ?? false}
               disabled={!settings}
               onChange={(v) => patch('autoFade', v)}
+            />
+          </div>
+
+          <div className="settings__row">
+            <div className="settings__label">
+              윈도우 시작 시 자동 실행
+              <div className="settings__sub">로그인하면 트레이에서 바로 대기합니다</div>
+            </div>
+            <Toggle
+              label="윈도우 시작 시 자동 실행"
+              checked={autostart ?? false}
+              disabled={autostart === null}
+              onChange={(v) => void onToggleAutostart(v)}
             />
           </div>
 

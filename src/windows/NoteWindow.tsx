@@ -125,8 +125,12 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   /**
    * 본문 에디터 핸들 — 커서를 넣기 위한 것.
    *
-   * `drawSelection()` 의 캐럿은 에디터가 포커스를 가진 동안에만 그려진다. 창만
-   * 활성화되고 포커스가 `<body>` 에 남으면 깜빡이는 커서가 아예 없다 (신고 #1).
+   * `drawSelection()` 의 캐럿은 **에디터가 DOM 포커스를 가진 동안에만** 그려진다.
+   * 정확히는 `EditorView.hasFocus` 가
+   *   `document.hasFocus() && root.activeElement === contentDOM`
+   * 이고(@codemirror/view 6.43.6 dist/index.js:8590), 이게 거짓이면 루트에서
+   * `cm-focused` 클래스가 떨어지면서 캐럿 div 의 `display:block` 과 깜빡임
+   * 애니메이션이 동시에 꺼진다. 즉 포커스가 버튼·슬라이더로 새는 순간 커서가 사라진다.
    */
   const editorRef = useRef<NoteEditorHandle | null>(null)
   // 백엔드 호출 실패 — 조용히 넘기지 않는다 (ipc 폴백 제거 · CLAUDE.md "흔한 함정")
@@ -293,6 +297,19 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
     editorRef.current?.focus()
   }, [])
 
+  /**
+   * 컨트롤을 하나 쓰고 났을 때 커서를 본문으로 되돌린다 — **가드 없이.**
+   *
+   * `focusEditor()` 는 "컨트롤에 포커스가 있으면 건드리지 않는다" 는 가드가 있어서,
+   * 핀·색상 버튼을 누른 **직후**(= activeElement 가 그 버튼)에는 아무 일도 하지 않는다.
+   * 그러면 클릭 한 번에 캐럿이 사라지고 사용자가 본문을 다시 클릭해야 돌아온다.
+   * 조작이 끝난 게 확실한 지점(색 선택 · 핀 토글 · 창 드래그/리사이즈 종료)에서는
+   * 이쪽을 쓴다. 투명도 슬라이더는 예외다 — ←/→ 키 조작을 끊으면 안 된다.
+   */
+  const returnFocusToEditor = useCallback(() => {
+    editorRef.current?.focus()
+  }, [])
+
   // ── 포커스/블러 ─────────────────────────────────────────
   // autoFade OFF → 항상 note.opacity
   // autoFade ON  → 포커스 시 100%, 블러 시 note.opacity (transition 180ms ease-out)
@@ -326,9 +343,17 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
       if (disposed) un()
       else unlisten = un
     })
+
+    // 웹뷰(DOM) 레벨의 포커스도 따로 듣는다. Tauri 의 onFocusChanged 는 **창**의
+    // 활성화만 알려주는데, `startDragging()` / `startResizeDragging()` 이 도는
+    // 동안에는 창이 활성 상태 그대로인 채 웹뷰만 포커스를 잃는다 → 드래그가 끝나도
+    // onFocusChanged 가 안 와서 캐럿이 사라진 채로 남았다. 이 경로가 그걸 메운다.
+    const onDomFocus = () => focusEditor()
+    window.addEventListener('focus', onDomFocus)
     return () => {
       disposed = true
       unlisten?.()
+      window.removeEventListener('focus', onDomFocus)
     }
   }, [focusEditor])
 
@@ -421,7 +446,9 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
       pushMeta({ pinned: next })
       return next
     })
-  }, [noteId, pushMeta])
+    // 버튼이 포커스를 가져갔다 — 캐럿이 사라지지 않게 본문으로 돌려준다.
+    returnFocusToEditor()
+  }, [noteId, pushMeta, returnFocusToEditor])
 
   const onOpacityChange = useCallback(
     (value: number) => {
@@ -443,16 +470,29 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   const onOpacityHoldEnd = useCallback(() => {
     setOpacityHeld(false)
     markOpacityAdjusted()
-  }, [markOpacityAdjusted])
+    // 마우스로 슬라이더를 놓은 경우에만 커서를 본문으로 돌려준다.
+    // 이 콜백은 슬라이더의 onBlur 로도 불리는데, 그때는 포커스가 이미 다른 데로
+    // 간 뒤라 건드리면 안 된다 — 그래서 아직 슬라이더가 포커스일 때만 회수한다.
+    const active = document.activeElement
+    if (active instanceof HTMLInputElement && active.type === 'range') returnFocusToEditor()
+  }, [markOpacityAdjusted, returnFocusToEditor])
 
   const onPickColor = useCallback(
     (next: ColorIndex) => {
       setColor(next)
       setPaletteOpen(false)
       pushMeta({ color: next })
+      // 색을 고르고 나면 조작이 끝난 것이다 — 커서를 본문으로 되돌린다.
+      returnFocusToEditor()
     },
-    [pushMeta],
+    [pushMeta, returnFocusToEditor],
   )
+
+  /** 색상 팝오버 토글. **닫는** 쪽이면 조작이 끝난 것이므로 커서를 본문으로 돌린다. */
+  const onTogglePalette = useCallback(() => {
+    setPaletteOpen((v) => !v)
+    if (paletteOpen) returnFocusToEditor()
+  }, [paletteOpen, returnFocusToEditor])
 
   const onNewNote = useCallback(() => {
     void (async () => {
@@ -476,10 +516,22 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
     })()
   }, [noteId])
 
-  const onDragStart = useCallback((e: ReactMouseEvent<HTMLElement>) => {
-    e.preventDefault()
-    void startDragging()
-  }, [])
+  const onDragStart = useCallback(
+    (e: ReactMouseEvent<HTMLElement>) => {
+      e.preventDefault()
+      // preventDefault 때문에 mousedown 이 포커스를 옮기지 않고, 네이티브 이동 루프가
+      // 도는 동안 웹뷰가 포커스를 잃는다. 루프가 끝나면 되돌려 놓는다.
+      void startDragging().then(returnFocusToEditor)
+    },
+    [returnFocusToEditor],
+  )
+
+  const onResizeStart = useCallback(
+    (dir: ResizeDir) => {
+      void startResizing(dir).then(returnFocusToEditor)
+    },
+    [returnFocusToEditor],
+  )
 
   // ── 렌더 ────────────────────────────────────────────────
   // autoFade OFF                → 항상 note.opacity (원래 경로, 손대지 않는다)
@@ -509,7 +561,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
           onMouseDown={(e) => {
             if (e.button !== 0) return
             e.preventDefault()
-            void startResizing(dir)
+            onResizeStart(dir)
           }}
         />
       ))}
@@ -525,7 +577,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
             onOpacityChange={onOpacityChange}
             onOpacityHoldStart={onOpacityHoldStart}
             onOpacityHoldEnd={onOpacityHoldEnd}
-            onTogglePalette={() => setPaletteOpen((v) => !v)}
+            onTogglePalette={onTogglePalette}
             onNewNote={onNewNote}
             onClose={onClose}
             onDragStart={onDragStart}
@@ -563,7 +615,10 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
               <button
                 type="button"
                 className="note-alert__dismiss"
-                onClick={() => setError(null)}
+                onClick={() => {
+                  setError(null)
+                  returnFocusToEditor()
+                }}
               >
                 닫기
               </button>
@@ -588,7 +643,10 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
               <button
                 type="button"
                 className="note-alert__dismiss"
-                onClick={() => setUpdateDismissed(true)}
+                onClick={() => {
+                  setUpdateDismissed(true)
+                  returnFocusToEditor()
+                }}
               >
                 나중에
               </button>
@@ -609,7 +667,10 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
               <button
                 type="button"
                 className="note-alert__dismiss"
-                onClick={() => setAlertDismissed(true)}
+                onClick={() => {
+                  setAlertDismissed(true)
+                  returnFocusToEditor()
+                }}
               >
                 닫기
               </button>
@@ -628,7 +689,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
             onMouseDown={(e) => {
               if (e.button !== 0) return
               e.preventDefault()
-              void startResizing('SouthEast')
+              onResizeStart('SouthEast')
             }}
           />
         </div>

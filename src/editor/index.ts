@@ -27,6 +27,7 @@ import {
   type ViewUpdate,
 } from '@codemirror/view'
 
+import { codeContextAttributes } from './caretContext'
 import { buildInlineDecorations } from './inlineMarkers'
 import { buildImageDecorations, imageAttachments, type AttachmentStore } from './images'
 import { type DecoRange } from './shared'
@@ -35,6 +36,13 @@ import { codeHighlightStyle, noteEditorTheme } from './theme'
 import { buildWikilinkTagDecorations } from './wikilinkTag'
 
 export { cursorInside } from './shared'
+export {
+  caretInCodeBlock,
+  selectionInCodeBlock,
+  CARET_IN_CODE_CLASS,
+  SELECTION_IN_CODE_CLASS,
+} from './caretContext'
+export { codeBlockAt } from './inlineMarkers'
 export { buildWikilinkTagDecorations } from './wikilinkTag'
 export { buildTaskDecorations } from './taskList'
 export { buildInlineDecorations } from './inlineMarkers'
@@ -163,6 +171,10 @@ export function createNoteEditorExtensions(options: NoteEditorOptions = {}): Ext
 
     livePreview,
     syntaxHighlighting(codeHighlightStyle),
+    // 캐럿·선택이 코드블록 안인지를 에디터 루트 class 로 내보낸다.
+    // noteEditorTheme 보다 먼저 와야 할 이유는 없지만(둘 다 facet), 색을 거는
+    // 테마 바로 앞에 두어 읽는 순서를 맞춘다.
+    codeContextAttributes,
     noteEditorTheme,
     EditorView.contentAttributes.of({ spellcheck: 'false' }),
     imageAttachments(options.attachments),

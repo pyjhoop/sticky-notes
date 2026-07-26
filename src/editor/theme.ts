@@ -167,6 +167,35 @@ export const noteEditorTheme = EditorView.theme(
       backgroundColor: 'var(--selection-bg)',
     },
 
+    /* ── 코드블록 안에서의 캐럿·선택 ─────────────────────────
+     * 사용자 신고 — "마크다운 내에서 캐럿이 안 보인다. 다크 모드여서."
+     * 캐럿 색 `--ink`(#2a2521)와 코드블록 배경 `--code-bg`(#2a2521)가 **같은 색**이다.
+     *
+     * 자손 셀렉터(`.cm-code-line .cm-cursor`)로는 못 고친다 — 캐럿 div 는
+     * `.cm-cursorLayer` 안에 있고 그건 `.cm-line` 의 자손이 아니라 **형제의 자손**이다.
+     * 그래서 커서가 코드블록 줄 위인지를 상태에서 판정해 에디터 루트에 클래스를 붙이고
+     * (`editor/caretContext.ts` — 구조 그림과 근거가 거기 있다) 여기서 그 클래스로 건다.
+     *
+     * 색은 코드블록의 본문색 `--code-fg`(#d8d2c8)다. 종이 위에서 캐럿이 본문색
+     * `--ink` 인 것과 같은 규칙이고, 대비 10.1:1 로 배경에서 확실히 떠오른다.
+     * 명시도: `.ͼo.cm-caret-in-code .cm-cursor`(0,3,0) > 위 기본 규칙 `.ͼo .cm-cursor`(0,2,0).
+     */
+    '&.cm-caret-in-code .cm-cursor, &.cm-caret-in-code .cm-dropCursor': {
+      borderLeftColor: 'var(--code-fg)',
+    },
+
+    /* 선택 영역도 같은 이유로 묻힌다. `--selection-bg`(악센트 알파 25%)를 --code-bg 에
+     * 합성하면 rgb(32,54,73) — 배경 대비 1.22:1 이라 사실상 구분되지 않는다.
+     * `--selection-bg-code` 는 1.86:1 (근거는 tokens.css "코드 블록" 절).
+     *
+     * `.cm-focused` 조합까지 함께 적는 것은 명시도 때문이다. 위 기본 규칙 중
+     * `&.cm-focused .cm-selectionBackground` 가 (0,3,0)이라 같은 (0,3,0)으로는
+     * 문서 순서에만 기대게 된다 — 포커스 상태에서는 (0,4,0)으로 확실히 이긴다. */
+    '&.cm-selection-in-code .cm-selectionBackground, &.cm-selection-in-code.cm-focused .cm-selectionBackground':
+      {
+        backgroundColor: 'var(--selection-bg-code)',
+      },
+
     '.cm-placeholder': { color: 'var(--on-paper-ghost)' },
 
     /* 현재 줄 강조는 **없다.** 사용자 요청으로 걷어냈다 (2026-07-26).

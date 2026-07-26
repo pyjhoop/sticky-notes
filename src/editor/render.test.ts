@@ -218,6 +218,101 @@ describe('캐럿', () => {
 })
 
 /**
+ * 코드블록 안에서의 캐럿·선택.
+ *
+ * 사용자 신고 — "마크다운 내에서 캐럿이 안 보이고 다크 모드여서."
+ * 캐럿 색 `--ink` 와 코드블록 배경 `--code-bg` 가 **둘 다 #2a2521** 이라 묻힌다.
+ *
+ * 캐럿 div 는 `.cm-cursorLayer` 안에 있고 그건 `.cm-line` 의 자손이 아니므로
+ * (`.cm-code-line .cm-cursor` 는 **절대 매칭되지 않는다**) 상태 판정 → 에디터 루트
+ * class 로 우회한다. 그래서 여기서 지키는 것은 두 가지다:
+ *   ① 커서 위치에 따라 루트 class 가 실제로 붙고 떨어지는가 (동작)
+ *   ② 그 class 에 걸린 색 규칙이 주입되는가 (CSS)
+ * ①이 본체다 — ②만 있으면 판정 로직을 통째로 지워도 통과한다.
+ */
+const CODE_DOC = ['본문 한 줄', '', '```js', 'const x = 1', '```', '', '뒤 본문'].join('\n')
+
+describe('코드블록 안 캐럿·선택', () => {
+  /** 지정한 줄(1-based)의 지정 칸에 커서를 두고 루트 class 목록을 돌려준다. */
+  function caretAt(editor: EditorView, lineNumber: number, column = 0): DOMTokenList {
+    const line = editor.state.doc.line(lineNumber)
+    editor.dispatch({ selection: EditorSelection.cursor(line.from + column) })
+    return editor.dom.classList
+  }
+
+  it('커서가 코드블록 줄 위일 때만 cm-caret-in-code 가 붙는다', () => {
+    const editor = mount(CODE_DOC)
+
+    // 종이 본문 — 붙지 않는다
+    expect(caretAt(editor, 1, 2).contains('cm-caret-in-code')).toBe(false)
+    // 여는 펜스 · 코드 본문 · 닫는 펜스 — 전부 어두운 배경 안이므로 붙는다
+    expect(caretAt(editor, 3, 1).contains('cm-caret-in-code')).toBe(true)
+    expect(caretAt(editor, 4, 5).contains('cm-caret-in-code')).toBe(true)
+    expect(caretAt(editor, 5, 0).contains('cm-caret-in-code')).toBe(true)
+    // 블록 뒤 빈 줄 · 뒤 본문 — 다시 떨어진다
+    expect(caretAt(editor, 6, 0).contains('cm-caret-in-code')).toBe(false)
+    expect(caretAt(editor, 7, 1).contains('cm-caret-in-code')).toBe(false)
+  })
+
+  it('클래스가 붙는 줄과 어두운 배경이 깔리는 줄이 정확히 같다', () => {
+    const editor = mount(CODE_DOC)
+    const codeLines = new Set<number>()
+    for (const el of Array.from(editor.dom.querySelectorAll('.cm-code-line'))) {
+      const pos = editor.posAtDOM(el)
+      codeLines.add(editor.state.doc.lineAt(pos).number)
+    }
+    expect(codeLines.size).toBeGreaterThan(0)
+
+    for (let n = 1; n <= editor.state.doc.lines; n++) {
+      expect(caretAt(editor, n).contains('cm-caret-in-code'), `${n}번째 줄`).toBe(codeLines.has(n))
+    }
+  })
+
+  it('코드블록 안에서만 선택 영역 색을 바꾼다 — 걸친 선택은 건드리지 않는다', () => {
+    const editor = mount(CODE_DOC)
+    const code = editor.state.doc.line(4)
+
+    // 코드블록 한 줄 안의 선택
+    editor.dispatch({ selection: EditorSelection.range(code.from, code.to) })
+    expect(editor.dom.classList.contains('cm-selection-in-code')).toBe(true)
+
+    // 종이 본문에서 코드블록으로 걸친 선택 — 한쪽에서 반드시 묻히므로 기본색을 쓴다
+    editor.dispatch({
+      selection: EditorSelection.range(editor.state.doc.line(1).from, code.to),
+    })
+    expect(editor.dom.classList.contains('cm-selection-in-code')).toBe(false)
+
+    // 빈 커서는 선택이 아니다
+    editor.dispatch({ selection: EditorSelection.cursor(code.from) })
+    expect(editor.dom.classList.contains('cm-selection-in-code')).toBe(false)
+  })
+
+  it('테마가 코드블록 전용 캐럿·선택 색을 주입한다', () => {
+    mount(CODE_DOC)
+
+    // 캐럿은 코드 본문색으로 바뀐다 (종이에서 --ink 인 것과 같은 규칙)
+    const caret = ruleFor('.cm-caret-in-code .cm-cursor')
+    expect(caret).toContain('border-left-color: var(--code-fg)')
+    // 기본 캐럿 규칙은 그대로 --ink 여야 한다 — 종이 위 캐럿을 망가뜨리면 안 된다
+    expect(ruleFor('border-left-width: var(--caret-w)')).toContain(
+      'border-left-color: var(--ink)',
+    )
+
+    // 선택은 전용 토큰. --selection-bg 를 그대로 쓰면 어두운 배경에서 묻힌다
+    const selection = ruleFor('.cm-selection-in-code .cm-selectionBackground')
+    expect(selection).toContain('background-color: var(--selection-bg-code)')
+  })
+
+  it('자손 셀렉터로 캐럿을 고치려 들지 않는다 (구조상 매칭되지 않는다)', () => {
+    // `.cm-cursorLayer` 는 `.cm-line` 의 형제의 부모 쪽에 있다. 아래 셀렉터는
+    // 어떤 DOM 에서도 매칭되지 않으므로, 누가 다시 넣으면 조용히 죽는 규칙이 된다.
+    mount(CODE_DOC)
+    expect(injectedCss()).not.toContain('.cm-code-line .cm-cursor')
+    expect(injectedCss()).not.toContain('.cm-code-line .cm-selectionBackground')
+  })
+})
+
+/**
  * 스크롤바.
  *
  * 사용자 신고 — "스크롤 디자인이 너무 크다". 스타일이 하나도 없어서 WebView2

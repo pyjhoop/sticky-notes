@@ -35,6 +35,63 @@ body:not([data-backdrop]) .dark-window {
   background: var(--dark-bg-opaque);
 }
 
+/* ── 공용 — 스크롤바 (보드 카드 그리드 · 설정 본문) ──────────
+ * 디자인 원본에 스크롤바 그림은 없다. 기준은 Windows 11 —
+ * 트랙은 보이지 않고 썸만 가늘게, 포인터가 올라오면 굵고 진해진다.
+ * WebView2(Chromium 150) 기본값은 폭 15px + 회색 트랙 + 화살표 버튼이라
+ * 다크 크롬 위에서 지나치게 크고 밝다.
+ *
+ * ▸ `::-webkit-scrollbar` 만 쓴다. 표준 `scrollbar-width`/`scrollbar-color` 는
+ *   폭이 auto|thin|none 셋뿐이고 라운드·굵기 변화를 표현하지 못하며,
+ *   **한 엘리먼트에 둘을 같이 쓰면 Chromium 이 표준 쪽을 채택하고
+ *   ::-webkit-scrollbar 규칙 전체를 무시한다.** 그래서 이 저장소는
+ *   표준 속성을 어디에도 쓰지 않는다. (같은 판단이 src/editor/theme.ts 에도 있다)
+ *
+ * ▸ 색은 종이 쪽(--on-paper-*)을 그대로 쓸 수 없다 — 검정 알파는 다크 크롬에서
+ *   보이지 않는다. 다크 크롬의 상호작용 표면 쌍(--dark-btn-bg → --dark-btn-bg-hover)을
+ *   쓴다. 썸은 잡아 끄는 컨트롤이므로 버튼과 같은 계열이 맞다.
+ *
+ * ▸ 레이아웃 시프트 0 — 트랙 폭은 유휴·호버가 같고, 굵기는 썸의 투명 border 로만
+ *   바뀐다. scrollbar-gutter:stable 이 스크롤바가 생기는 순간의 시프트도 막는다.
+ *
+ * ▸ **미결 — 치수 토큰이 없다.** `--scrollbar-w` / `--scrollbar-thumb-w` /
+ *   `--scrollbar-thumb-w-hover` 는 tokens.css(계약 파일)에 아직 없다. 임의로 추가할 수
+ *   없어 폴백 값으로 동작시켜 두었다. 리더가 토큰을 추가하면 폴백은 자동으로 무시된다.
+ *   근거: 8px = Chromium 기본 15px 의 약 절반, 4px/6px = 그 안의 유휴/호버 썸.
+ */
+.dark-window ::-webkit-scrollbar {
+  width: var(--scrollbar-w, 8px);
+  height: var(--scrollbar-w, 8px);
+}
+
+.dark-window ::-webkit-scrollbar-track,
+.dark-window ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 화살표 버튼 — Windows 11 스크롤바에는 없다 */
+.dark-window ::-webkit-scrollbar-button {
+  display: none;
+}
+
+.dark-window ::-webkit-scrollbar-thumb {
+  background-color: var(--dark-btn-bg);
+  /* 투명 border + padding-box 로 트랙 안에서 썸만 가늘게 그린다 */
+  background-clip: padding-box;
+  border: calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w, 4px)) / 2) solid
+    transparent;
+  border-radius: var(--radius-pill);
+}
+
+/* 포인터가 그 영역 위에 있거나(=스크롤할 참) 썸을 직접 잡았을 때만 또렷해진다.
+   CSS 로는 "스크롤 중"을 알 수 없어 :active(드래그)까지가 한계다. */
+.dark-window :hover::-webkit-scrollbar-thumb,
+.dark-window ::-webkit-scrollbar-thumb:hover,
+.dark-window ::-webkit-scrollbar-thumb:active {
+  background-color: var(--dark-btn-bg-hover);
+  border-width: calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w-hover, 6px)) / 2);
+}
+
 /* ═══════════════════════════════════════════════════════════
  * 공용 — TitleBar
  * ═══════════════════════════════════════════════════════════ */
@@ -335,6 +392,9 @@ body:not([data-backdrop]) .dark-window {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 카드가 한 화면을 넘기는 순간 그리드 폭이 줄어 카드가 다시 배치되는 것을 막는다 —
+     스크롤바 폭을 처음부터 예약해 둔다 (겉모습은 위 "공용 — 스크롤바"). */
+  scrollbar-gutter: stable;
   display: grid;
   grid-template-columns: repeat(var(--board-cols), 1fr);
   gap: var(--board-gap);

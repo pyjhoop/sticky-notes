@@ -21,10 +21,13 @@ body[data-window='settings']:not([data-backdrop]) .dark-window {
   background: var(--dark-bg-opaque);
 }
 
+/* 스크롤바 겉모습은 board.css 의 "공용 — 스크롤바"(.dark-window ::-webkit-scrollbar).
+   여기서는 폭을 미리 예약해 내용이 넘치는 순간의 레이아웃 시프트만 막는다. */
 .settings__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
   gap: var(--settings-section-gap);

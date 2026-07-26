@@ -1,0 +1,386 @@
+/*
+ * 메모 창 전용 스타일 — 트랙 C 소유.
+ *
+ * 근거: design/Sticky Notes for Windows.dc.html 의 "떠 있는 메모 · 활성" 블록(37~121행)과
+ *       "유휴 — 컨트롤 숨김, 종이만 남음"(264~268행).
+ *
+ * 색·치수는 전부 tokens.css(동결)를 참조한다. 하드코딩 금지.
+ * 예외 1건: 닫기 버튼 hover 시의 순백 글자색 — tokens.css에 순백 토큰이 없어
+ *          `.note-paper` 스코프의 지역 별칭 `--on-red-close`로 둔다 (아래 주석 참조).
+ */
+
+/* ── 창 루트 ─────────────────────────────────────────────
+ * 창 크기 = 종이 + 사방 24px 투명 여백.
+ * 이 여백이 drop-shadow가 그려질 자리이자 네이티브 리사이즈 그랩 존이다.
+ * (여백을 줄이면 그림자가 잘린다 — CLAUDE.md "흔한 함정")
+ */
+.note-root {
+  position: relative;
+  height: 100%;
+  padding: var(--note-margin);
+}
+
+/* 그림자 + 투명도는 종이 래퍼에 건다. 창 자체가 아니다. */
+.note-shadow {
+  height: 100%;
+  opacity: var(--note-opacity);
+  filter: drop-shadow(var(--shadow-note));
+  transition: var(--transition-fade);
+}
+
+.note-paper {
+  /* 디자인 55행: 닫기 hover `background:#c42b1c; color:#fff`.
+     tokens.css(동결)에 순백 토큰이 없어 이 파일 스코프의 지역 별칭으로 둔다. */
+  --on-red-close: #fff;
+
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-note);
+  background: var(--paper-bg);
+  border: 1px solid var(--paper-border);
+  color: var(--ink);
+  transition: background-color var(--fade-duration) var(--fade-ease);
+}
+
+/* ── 컨트롤 바 ───────────────────────────────────────────
+ * 높이 38px는 **어떤 상태에서도 바뀌지 않는다.** 유휴 전환은 배경·자식 불투명도·
+ * 하단 보더만 건드리므로 레이아웃 시프트가 0이다 (plan.md "유휴 상태 구현").
+ */
+.note-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  height: var(--control-bar-h);
+  padding: 0 8px 0 12px;
+  background: var(--chrome-bg);
+  border-bottom: 1px solid var(--chrome-border);
+  transition: var(--transition-chrome);
+}
+
+.note-controls > * {
+  transition: var(--transition-fade);
+}
+
+/* 유휴 — 포인터가 창 밖(팔레트 팝오버가 열려 있으면 유지) */
+.note-root:not(:hover):not(.is-palette-open) .note-controls {
+  background: var(--paper-bg);
+  border-bottom-color: transparent;
+}
+
+.note-root:not(:hover):not(.is-palette-open) .note-controls > * {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.note-root:not(:hover):not(.is-palette-open) .note-grip {
+  opacity: 0;
+}
+
+/* ── 컨트롤 버튼 (핀 · 색상 · + · ✕) ─────────────────────── */
+.note-btn {
+  width: var(--control-btn);
+  height: var(--control-btn);
+  flex: none;
+  border-radius: var(--radius-button);
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  color: var(--on-paper-mid);
+  transition: background-color var(--fade-duration) var(--fade-ease),
+    color var(--fade-duration) var(--fade-ease);
+}
+
+.note-btn:hover {
+  background: var(--hover-on-paper);
+}
+
+.note-btn--pin.is-on {
+  background: var(--pin-active-bg);
+}
+
+.note-pin-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--on-paper-ghost);
+}
+
+.note-btn--pin.is-on .note-pin-dot {
+  background: var(--accent);
+}
+
+.note-swatch {
+  width: var(--control-swatch);
+  height: var(--control-swatch);
+  border-radius: 3px;
+  background: var(--paper-bg);
+  border: 1px solid var(--swatch-border-sm);
+}
+
+.note-btn--new {
+  font-size: 15px;
+}
+
+.note-btn--close {
+  font-size: 13px;
+}
+
+.note-btn--close:hover {
+  background: var(--red-close);
+  color: var(--on-red-close);
+}
+
+/* ── 투명도 슬라이더 ─────────────────────────────────────── */
+.note-opacity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+
+.note-opacity__label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-inline);
+  letter-spacing: var(--ls-mono-inline);
+  color: var(--on-paper-faint);
+  flex: none;
+}
+
+.note-opacity__range {
+  flex: 1;
+  min-width: 0;
+  height: 14px;
+}
+
+.note-opacity__value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-value);
+  color: var(--on-paper);
+  width: 30px;
+  text-align: right;
+  flex: none;
+}
+
+/* ── 색상 팔레트 팝오버 ──────────────────────────────────── */
+.note-palette {
+  position: absolute;
+  right: 60px;
+  top: 40px;
+  z-index: 5;
+  display: flex;
+  gap: var(--palette-gap);
+  padding: var(--palette-pad);
+  border-radius: var(--radius-popover);
+  background: var(--popover-bg);
+  border: 1px solid var(--paper-border);
+  box-shadow: var(--shadow-popover);
+}
+
+.note-palette__swatch {
+  width: var(--palette-swatch);
+  height: var(--palette-swatch);
+  border-radius: var(--radius-swatch);
+  border: 1px solid var(--swatch-border);
+}
+
+.note-palette__swatch.is-active {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* ── 본문 ────────────────────────────────────────────────── */
+.note-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--note-body-pad-y) var(--note-body-pad-x) var(--note-body-pad-bottom);
+}
+
+/* ── 단축키 등록 실패 배너 ────────────────────────────────
+ * 조용한 무동작을 금지한다 (CLAUDE.md "흔한 함정" · M4 DoD).
+ * 유휴 상태에서도 숨기지 않는다 — 경고이지 컨트롤이 아니다.
+ */
+.note-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: none;
+  padding: 9px 12px;
+  background: var(--chrome-bg);
+  border-top: 1px solid var(--paper-border);
+}
+
+.note-alert__dot {
+  width: var(--status-dot);
+  height: var(--status-dot);
+  margin-top: 4px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--yellow-saving);
+}
+
+.note-alert__text {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-small);
+  line-height: var(--lh-compact);
+  color: var(--on-paper-strong);
+}
+
+.note-alert__keys {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-value);
+  color: var(--on-paper-dim);
+}
+
+.note-alert__dismiss {
+  flex: none;
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: var(--radius-button);
+  background: var(--hover-on-paper);
+  color: var(--on-paper-strong);
+}
+
+/* ── 저장 푸터 ───────────────────────────────────────────
+ * plan.md "디자인 대비 변경점": `● 제목 · 저장됨 12:04`.
+ * 동기화 문구는 v1 범위 밖이라 쓰지 않는다.
+ */
+.note-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: var(--footer-pad-y) var(--footer-pad-x);
+  background: var(--footer-bg);
+  border-top: 1px solid var(--chrome-border);
+}
+
+.note-footer__dot {
+  width: var(--status-dot);
+  height: var(--status-dot);
+  flex: none;
+  border-radius: 50%;
+  background: var(--green-done);
+  transition: background-color var(--fade-duration) var(--fade-ease);
+}
+
+.note-footer__dot.is-saving {
+  background: var(--yellow-saving);
+}
+
+.note-footer__title {
+  font-size: var(--fs-small);
+  color: var(--on-paper);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-footer__spacer {
+  flex: 1;
+}
+
+.note-footer__state {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-value);
+  color: var(--on-paper-dim);
+}
+
+/* ── 리사이즈 ────────────────────────────────────────────── */
+.note-grip {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: var(--grip-size);
+  height: var(--grip-size);
+  cursor: nwse-resize;
+  transition: var(--transition-fade);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0) 50%,
+    var(--grip-color) 50%,
+    var(--grip-color) 62%,
+    rgba(0, 0, 0, 0) 62%,
+    rgba(0, 0, 0, 0) 76%,
+    var(--grip-color) 76%
+  );
+}
+
+/* 투명 여백 = 네이티브 리사이즈 그랩 존. 8방향. */
+.note-resize {
+  position: absolute;
+  z-index: 10;
+}
+
+.note-resize--n {
+  top: 0;
+  left: var(--note-margin);
+  right: var(--note-margin);
+  height: var(--note-margin);
+  cursor: ns-resize;
+}
+
+.note-resize--s {
+  bottom: 0;
+  left: var(--note-margin);
+  right: var(--note-margin);
+  height: var(--note-margin);
+  cursor: ns-resize;
+}
+
+.note-resize--w {
+  left: 0;
+  top: var(--note-margin);
+  bottom: var(--note-margin);
+  width: var(--note-margin);
+  cursor: ew-resize;
+}
+
+.note-resize--e {
+  right: 0;
+  top: var(--note-margin);
+  bottom: var(--note-margin);
+  width: var(--note-margin);
+  cursor: ew-resize;
+}
+
+.note-resize--nw,
+.note-resize--ne,
+.note-resize--sw,
+.note-resize--se {
+  width: var(--note-margin);
+  height: var(--note-margin);
+}
+
+.note-resize--nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.note-resize--ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.note-resize--sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.note-resize--se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}

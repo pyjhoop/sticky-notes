@@ -1,0 +1,249 @@
+/*
+ * 계약 파일 — M0 동결
+ *
+ * 근거: design/Sticky Notes for Windows.dc.html
+ * 하드코딩된 색·치수를 컴포넌트에 쓰지 않는다. 전부 여기를 참조한다.
+ *
+ * 이 파일은 M0 종료와 동시에 동결된다. 토큰 추가가 필요하면 작업을 멈추고 리더에게 보고한다.
+ */
+
+:root {
+  /* ── 타이포 ─────────────────────────────────────────────
+   * 폰트는 @fontsource로 로컬 번들된다 (CDN 금지 — CLAUDE.md 절대규칙 2).
+   * import는 src/main.tsx 참조.
+   */
+  --font-sans: 'Noto Sans KR', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-bold: 700;
+
+  --fs-display: 30px; /* 문서 헤딩 */
+  --fs-note-title: 17px; /* 메모 제목 */
+  --fs-body: 14px; /* 본문 · 체크리스트 */
+  --fs-body-sm: 13.5px; /* 문단 · 설정 항목 */
+  --fs-meta: 12.5px; /* 카드 제목 · 타이틀바 · 버튼 */
+  --fs-small: 11.5px; /* 푸터 · 태그 · 카드 본문 */
+  --fs-tiny: 11px;
+  --fs-inline-code: 12.5px;
+  --fs-code: 11.5px;
+
+  --lh-title: 1.3;
+  --lh-body: 1.5;
+  --lh-paragraph: 1.65;
+  --lh-code: 1.7;
+  --lh-compact: 1.45;
+
+  --ls-title: -0.01em;
+  --ls-display: -0.02em;
+
+  /* 모노 레이블 — OPACITY · DISPLAY · DATA · STATES */
+  --fs-mono-label: 10px;
+  --ls-mono-label: 0.13em;
+  --fs-mono-label-lg: 11px;
+  --ls-mono-label-lg: 0.14em;
+  --fs-mono-inline: 9px; /* 컨트롤 바 OPACITY */
+  --ls-mono-inline: 0.1em;
+  --fs-mono-value: 10px; /* 저장됨 · 12:04 / 96% */
+  --fs-mono-tiny: 9px; /* 카드 메타 */
+  --fs-mono-micro: 8.5px; /* 첨부 플레이스홀더 */
+
+  /* ── 메모 팔레트 (종이 / 크롬) ───────────────────────────
+   * DB의 notes.color 는 이 순서의 인덱스 0..4 이다.
+   * 크롬은 컨트롤 바 배경 — 종이보다 한 단계 진한 같은 계열.
+   */
+  --paper-0: #ffefa8;
+  --chrome-0: #f7e496;
+  --paper-1: #fbd3de;
+  --chrome-1: #f3c4d2;
+  --paper-2: #cfe4f7;
+  --chrome-2: #bed8f1;
+  --paper-3: #d9efcf;
+  --chrome-3: #cae6be;
+  --paper-4: #e4daf6;
+  --chrome-4: #d7c9f1;
+
+  /* 현재 메모의 색 — NoteWindow가 런타임에 덮어쓴다 (기본값 yellow) */
+  --paper-bg: var(--paper-0);
+  --chrome-bg: var(--chrome-0);
+
+  /* ── 잉크 ───────────────────────────────────────────── */
+  --ink: #2a2521; /* 본문 · 제목 */
+  --ink-body: #453e37; /* 문단 */
+  --ink-dim: rgba(42, 37, 33, 0.45); /* 완료된 할 일 */
+  --card-ink: #2b2620; /* 보드 카드 텍스트 */
+
+  /* 종이 위 검정 알파 — 종이색이 바뀌어도 톤이 유지되도록 알파로 둔다 */
+  --on-paper-strong: rgba(0, 0, 0, 0.6);
+  --on-paper: rgba(0, 0, 0, 0.55);
+  --on-paper-mid: rgba(0, 0, 0, 0.5);
+  --on-paper-soft: rgba(0, 0, 0, 0.45);
+  --on-paper-faint: rgba(0, 0, 0, 0.42);
+  --on-paper-dim: rgba(0, 0, 0, 0.4);
+  --on-paper-ghost: rgba(0, 0, 0, 0.35);
+
+  --paper-border: rgba(0, 0, 0, 0.1); /* 종이 테두리 */
+  --chrome-border: rgba(0, 0, 0, 0.07); /* 컨트롤 바 하단 · 푸터 상단 */
+  --paper-divider: rgba(0, 0, 0, 0.08); /* 본문 구분선 */
+  --footer-bg: rgba(0, 0, 0, 0.045);
+  --hover-on-paper: rgba(0, 0, 0, 0.1); /* 컨트롤 버튼 hover */
+  --pin-active-bg: rgba(0, 0, 0, 0.12); /* 핀 ON 배경 */
+  --chip-bg: rgba(0, 0, 0, 0.06); /* 인라인 코드 · 태그 알약 */
+  --checkbox-border: rgba(0, 0, 0, 0.3);
+  --swatch-border: rgba(0, 0, 0, 0.14);
+  --swatch-border-sm: rgba(0, 0, 0, 0.2);
+  --range-track: rgba(0, 0, 0, 0.22);
+  --grip-color: rgba(0, 0, 0, 0.22);
+  --attach-border: rgba(0, 0, 0, 0.14);
+  --attach-stripe: rgba(0, 0, 0, 0.055);
+  --popover-bg: rgba(252, 250, 247, 0.96);
+
+  /* ── 상태색 ─────────────────────────────────────────── */
+  --green-done: #3a8a4f; /* 완료 체크박스 · 저장됨 */
+  --yellow-saving: #c9a227; /* 저장 대기 */
+  --red-close: #c42b1c; /* 닫기 hover */
+  --wikilink-fg: #6d4fc4;
+  --wikilink-bg: rgba(109, 79, 196, 0.1);
+
+  /* ── 악센트 (설정에서 4개 중 선택) ─────────────────────── */
+  --accent: #0067c0;
+  --accent-blue: #0067c0;
+  --accent-purple: #7a5cd6;
+  --accent-green: #3a8a4f;
+  --accent-orange: #c05621;
+  --selection-bg: rgba(0, 103, 192, 0.25);
+
+  /* ── 다크 크롬 (보드 · 설정 · 트레이 메뉴) ───────────────── */
+  --dark-bg: rgba(32, 30, 28, 0.86); /* 보드 */
+  --dark-bg-settings: rgba(34, 32, 30, 0.94);
+  --dark-bg-tray: rgba(40, 38, 36, 0.96);
+  --dark-bg-taskbar: rgba(28, 26, 24, 0.76);
+  --dark-bg-opaque: rgb(32, 30, 28); /* mica/acrylic 폴백 */
+
+  --dark-border: rgba(255, 255, 255, 0.1);
+  --dark-divider: rgba(255, 255, 255, 0.07);
+  --dark-hover: rgba(255, 255, 255, 0.08);
+  --dark-field-bg: rgba(255, 255, 255, 0.06);
+  --dark-field-bg-soft: rgba(255, 255, 255, 0.05);
+  --dark-btn-bg: rgba(255, 255, 255, 0.08);
+  --dark-btn-bg-hover: rgba(255, 255, 255, 0.14);
+  --dark-btn-border: rgba(255, 255, 255, 0.12);
+  --dark-toggle-off: rgba(255, 255, 255, 0.14);
+
+  --dark-text: #eae5de;
+  --dark-text-2: #cfc8bf;
+  --dark-text-3: #8a8278;
+  --dark-text-btn: #b6afa8;
+  --dark-text-menu: #dcd6ce;
+  --dark-placeholder: #8f8880;
+  --dark-knob-off: #d8d2c8;
+
+  --blur-board: 34px;
+  --blur-settings: 30px;
+  --blur-taskbar: 30px;
+
+  /* ── 코드 블록 ──────────────────────────────────────── */
+  --code-bg: #2a2521;
+  --code-fg: #d8d2c8;
+  --code-keyword: #c8a2ff;
+
+  /* ── 라운드 ─────────────────────────────────────────── */
+  --radius-note: 10px;
+  --radius-window: 10px;
+  --radius-card: 8px;
+  --radius-popover: 8px;
+  --radius-tray: 8px;
+  --radius-code: 7px;
+  --radius-field: 6px;
+  --radius-attach: 6px;
+  --radius-button: 5px;
+  --radius-swatch: 5px;
+  --radius-chip: 5px;
+  --radius-inline: 4px;
+  --radius-checkbox: 4px;
+  --radius-pill: 11px;
+  --radius-toggle: 11px;
+
+  /* ── 치수 ───────────────────────────────────────────── */
+  /* 메모 창 = 종이 + 사방 24px 투명 여백.
+     여백을 줄이면 --shadow-note 가 잘린다 (CLAUDE.md "흔한 함정"). */
+  --note-margin: 24px;
+  --note-width: 436px;
+  --control-bar-h: 38px;
+  --control-btn: 26px;
+  --control-swatch: 11px;
+  --note-body-pad-y: 18px;
+  --note-body-pad-x: 20px;
+  --note-body-pad-bottom: 14px;
+  --note-body-gap: 13px;
+  --footer-pad-y: 8px;
+  --footer-pad-x: 12px;
+  --status-dot: 6px;
+  --grip-size: 14px;
+
+  --checkbox: 16px;
+  --checkbox-sm: 14px;
+  --checkbox-border-w: 1.5px;
+
+  --palette-swatch: 22px;
+  --palette-gap: 6px;
+  --palette-pad: 8px;
+
+  --attach-w: 96px;
+  --attach-h: 64px;
+
+  --titlebar-h: 40px;
+  --titlebar-btn-w: 44px;
+  --search-h: 32px;
+  --field-h: 34px;
+  --filter-chip: 18px;
+  --board-w: 940px;
+  --board-h: 452px;
+  --board-cols: 4;
+  --board-gap: 12px;
+  --board-pad: 16px;
+  --card-h: 132px;
+  --card-pad-y: 12px;
+  --card-pad-x: 13px;
+
+  --settings-w: 620px;
+  --settings-pad-x: 24px;
+  --settings-pad-y: 22px;
+  --settings-section-gap: 22px;
+  --settings-row-gap: 12px;
+
+  --toggle-w: 40px;
+  --toggle-h: 22px;
+  --toggle-knob: 18px;
+
+  --tray-w: 230px;
+  --tray-item-pad-y: 8px;
+  --tray-item-pad-x: 14px;
+
+  /* ── 그림자 ─────────────────────────────────────────── */
+  --shadow-note: 0 26px 44px rgba(0, 0, 0, 0.45);
+  --shadow-note-idle: 0 16px 34px rgba(0, 0, 0, 0.3);
+  --shadow-note-small: 0 14px 30px rgba(0, 0, 0, 0.26);
+  --shadow-board: 0 34px 70px rgba(0, 0, 0, 0.5);
+  --shadow-settings: 0 30px 60px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 3px 10px rgba(0, 0, 0, 0.22);
+  --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.22);
+  --shadow-tray: 0 16px 34px rgba(0, 0, 0, 0.45);
+  --shadow-thumb: 0 1px 2px rgba(0, 0, 0, 0.25);
+
+  /* ── 투명도 · 모션 ───────────────────────────────────── */
+  --opacity-min: 35;
+  --opacity-max: 100;
+  --opacity-step: 5; /* Ctrl+Shift+휠 */
+  --opacity-default: 96;
+  /* 현재 메모의 투명도 0..1 — NoteWindow가 런타임에 덮어쓴다 */
+  --note-opacity: 0.96;
+
+  --fade-duration: 180ms;
+  --fade-ease: ease-out;
+  --transition-fade: opacity var(--fade-duration) var(--fade-ease);
+  --transition-chrome: background-color var(--fade-duration) var(--fade-ease),
+    border-color var(--fade-duration) var(--fade-ease);
+  --card-hover-lift: -2px;
+}

@@ -48,7 +48,15 @@ export default function ControlBar({
       className="note-controls"
       onMouseDown={(e) => {
         // 버튼·슬라이더 위에서는 드래그를 시작하지 않는다.
-        if (e.button === 0 && e.target === e.currentTarget) onDragStart(e)
+        //
+        // 예전엔 `e.target === e.currentTarget`(바 자신)만 통과시켰다. 그러면 실제
+        // 드래그 가능한 영역이 컨트롤 사이 틈뿐이라 창을 잡기가 어렵다. 종이 본문이
+        // 커서 배치로 바뀌면서(NoteWindow) 이 바가 주된 이동 손잡이가 됐으므로,
+        // **상호작용 요소가 아닌 곳은 전부** 드래그로 친다 (`OPACITY` 레이블·`96%` 값 포함).
+        if (e.button !== 0) return
+        const target = e.target as HTMLElement
+        if (target.closest('button, input, a, [role="button"]')) return
+        onDragStart(e)
       }}
     >
       <button

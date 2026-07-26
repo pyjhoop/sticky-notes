@@ -99,17 +99,59 @@ const IMAGE_RE =
   /^!\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^\s)]*))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)$/
 
 export interface ParsedImage {
+  /** `|` 뒤 크기를 **뗀** 설명 텍스트 */
   alt: string
   url: string
+  /** 표시 너비(px). 크기를 안 적었으면 `null` */
+  width: number | null
+  /** 표시 높이(px). `|400` 처럼 너비만 적었으면 `null` (비율 유지) */
+  height: number | null
 }
 
-/** `![](attachments/x.png)` → `{ alt: '', url: 'attachments/x.png' }`. 아니면 `null`. */
+/**
+ * 크기 지정 문법 — `![|400](x.png)` · `![캡션|400x260](x.png)`.
+ *
+ * **옵시디언과 같은 문법이다.** `plan.md` 의 "마크다운으로 내보내기"가 v1의 유일한
+ * 외부 연결 지점이라(`CLAUDE.md` 절대규칙 5), 크기 정보를 우리만 아는 형식으로 넣으면
+ * 내보낸 `.md` 가 옵시디언에서 깨진다. HTML `<img width>` 를 쓰지 않는 것도 같은 이유다 —
+ * 본문은 순수 마크다운으로 남는다 (절대규칙 3).
+ */
+const ALT_SIZE_RE = /^(.*)\|\s*(\d{1,5})(?:\s*x\s*(\d{1,5}))?\s*$/
+
+/** 렌더 크기의 안전 범위(px). 0이나 화면을 넘는 값이 본문에 들어가는 것을 막는다. */
+export const IMAGE_MIN_WIDTH = 40
+export const IMAGE_MAX_WIDTH = 2000
+
+export function clampImageWidth(px: number): number {
+  return Math.round(Math.min(IMAGE_MAX_WIDTH, Math.max(IMAGE_MIN_WIDTH, px)))
+}
+
+/** `![](attachments/x.png)` → `{ alt: '', url: 'attachments/x.png', … }`. 아니면 `null`. */
 export function parseImageMarkdown(text: string): ParsedImage | null {
   const m = IMAGE_RE.exec(text)
   if (!m) return null
   const url = (m[2] ?? m[3] ?? '').trim()
   if (!url) return null
-  return { alt: m[1] ?? '', url }
+
+  const rawAlt = m[1] ?? ''
+  const size = ALT_SIZE_RE.exec(rawAlt)
+  if (!size) return { alt: rawAlt, url, width: null, height: null }
+
+  return {
+    alt: size[1] ?? '',
+    url,
+    width: Number(size[2]),
+    height: size[3] !== undefined ? Number(size[3]) : null,
+  }
+}
+
+/**
+ * 크기만 바꾼 마크다운 한 줄을 만든다. **URL 은 원문 그대로 둔다** —
+ * 퍼센트 인코딩을 다시 하거나 풀면 사용자가 손으로 고친 경로가 망가진다.
+ */
+export function imageMarkdownWithWidth(image: ParsedImage, width: number | null): string {
+  const alt = width === null ? image.alt : `${image.alt}|${clampImageWidth(width)}`
+  return `![${alt}](${image.url})`
 }
 
 /**
@@ -129,23 +171,31 @@ export function imageInsertText(relativePath: string): string {
 /** 로드 전/실패 시 보여 줄 문구. 실패를 조용히 감추지 않는다. */
 const LOADING_LABEL = '불러오는 중'
 
+/** 크기 조절 손잡이. 이 안에서 일어난 이벤트는 에디터에 넘기지 않는다. */
+const HANDLE_CLASS = 'cm-attachment__handle'
+
 class AttachmentWidget extends WidgetType {
-  constructor(
-    readonly url: string,
-    readonly alt: string,
-  ) {
+  constructor(readonly image: ParsedImage) {
     super()
   }
 
   eq(other: AttachmentWidget): boolean {
-    return other.url === this.url && other.alt === this.alt
+    return (
+      other.image.url === this.image.url &&
+      other.image.alt === this.image.alt &&
+      other.image.width === this.image.width &&
+      other.image.height === this.image.height
+    )
   }
 
   toDOM(view: EditorView): HTMLElement {
+    const { url, alt, width, height } = this.image
+
     const box = document.createElement('span')
     box.className = 'cm-attachment'
     box.dataset.state = 'loading'
-    box.title = this.url
+    box.title = url
+    applyBoxSize(box, width, height)
 
     const label = document.createElement('span')
     label.className = 'cm-attachment__label'
@@ -154,9 +204,9 @@ class AttachmentWidget extends WidgetType {
 
     const fail = (reason: string) => {
       box.dataset.state = 'error'
-      box.title = `${reason} — ${this.url}`
+      box.title = `${reason} — ${url}`
       // 무엇이 깨졌는지 종이 위에 남긴다. 조용히 사라지지 않는다.
-      label.textContent = `${reason}\n${this.url}`
+      label.textContent = `${reason}\n${url}`
     }
 
     const store = view.state.facet(attachmentStore)
@@ -167,7 +217,7 @@ class AttachmentWidget extends WidgetType {
 
     const img = document.createElement('img')
     img.className = 'cm-attachment__img'
-    img.alt = this.alt
+    img.alt = alt
     img.draggable = false
     img.addEventListener('load', () => {
       box.dataset.state = 'ok'
@@ -175,7 +225,7 @@ class AttachmentWidget extends WidgetType {
     img.addEventListener('error', () => fail('이미지를 불러올 수 없음'))
 
     store
-      .resolve(this.url)
+      .resolve(url)
       .then((src) => {
         if (!src) {
           fail('이미지 경로를 알 수 없음')
@@ -186,13 +236,139 @@ class AttachmentWidget extends WidgetType {
       })
       .catch((e: unknown) => fail(`이미지 경로 확인 실패: ${String(e)}`))
 
+    box.appendChild(makeResizeHandle(view, box, this.image))
     return box
   }
 
-  /** 위젯 위의 클릭을 에디터가 먼저 삼키지 않도록 한다. */
-  ignoreEvent(): boolean {
-    return false
+  /**
+   * 손잡이 위의 이벤트만 에디터에서 감춘다.
+   *
+   * 나머지(이미지 본체 클릭)는 예전 그대로 에디터가 처리한다 — 클릭하면 그 자리에
+   * 커서가 들어가야 마크다운 원문을 볼 수 있다.
+   */
+  ignoreEvent(event: Event): boolean {
+    const target = event.target
+    return target instanceof Element && target.closest(`.${HANDLE_CLASS}`) !== null
   }
+}
+
+/** 크기가 지정된 첨부는 고정 96×64 플레이스홀더 대신 지정 크기로 그린다. */
+function applyBoxSize(box: HTMLElement, width: number | null, height: number | null): void {
+  if (width === null) {
+    box.classList.remove('cm-attachment--sized')
+    box.style.removeProperty('width')
+    box.style.removeProperty('height')
+    return
+  }
+  box.classList.add('cm-attachment--sized')
+  box.style.width = `${width}px`
+  // 높이를 안 적었으면 비율을 유지한다.
+  box.style.height = height === null ? 'auto' : `${height}px`
+}
+
+/**
+ * 우하단 손잡이 — 끌어서 너비를 바꾼다.
+ *
+ * CLAUDE.md 절대규칙 4 — 문서를 바꾸는 것은 **손을 뗄 때 트랜잭션 한 번**이다.
+ * 끄는 동안 만지는 것은 위젯 상자의 인라인 `width` 뿐인데, 이건 문서 내용이 아니라
+ * 미리보기다. (mousemove 마다 dispatch 하면 undo 기록이 수백 개로 쪼개지고
+ * 400ms 저장 디바운스가 끊임없이 재시작된다.)
+ *
+ * 손을 뗀 시점의 문서 위치는 `posAtDOM` 으로 다시 찾는다 — 위젯이 만들어진 뒤에
+ * 앞쪽 텍스트가 바뀌었을 수 있으므로 생성 시점의 오프셋을 기억해 두면 안 된다.
+ */
+function makeResizeHandle(
+  view: EditorView,
+  box: HTMLElement,
+  image: ParsedImage,
+): HTMLElement {
+  const handle = document.createElement('span')
+  handle.className = HANDLE_CLASS
+  handle.title = '끌어서 크기 조절 · 더블클릭하면 원래 크기'
+  handle.setAttribute('aria-hidden', 'true')
+
+  handle.addEventListener('mousedown', (event) => {
+    if (event.button !== 0) return
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startX = event.clientX
+    const startWidth = box.getBoundingClientRect().width
+    // 비율을 유지하려면 높이 지정은 버린다 — 너비 하나만 문서에 남긴다.
+    box.style.height = 'auto'
+    box.classList.add('cm-attachment--sized', 'cm-attachment--resizing')
+
+    let width = clampImageWidth(startWidth)
+
+    const onMove = (e: MouseEvent) => {
+      width = clampImageWidth(startWidth + (e.clientX - startX))
+      box.style.width = `${width}px`
+    }
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      box.classList.remove('cm-attachment--resizing')
+      commitImageWidth(view, box, image, width)
+    }
+
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  })
+
+  // 더블클릭 → 크기 지정을 없애 기본 플레이스홀더 크기로 되돌린다.
+  handle.addEventListener('dblclick', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    commitImageWidth(view, box, image, null)
+  })
+
+  return handle
+}
+
+/** 위젯이 지금 덮고 있는 `![…](…)` 를 찾아 크기만 바꿔 쓴다. */
+function commitImageWidth(
+  view: EditorView,
+  box: HTMLElement,
+  image: ParsedImage,
+  width: number | null,
+): void {
+  if (width === image.width) return
+
+  const pos = view.posAtDOM(box)
+  const found = findImageNodeAt(view.state, pos)
+  if (!found) {
+    // 문서에서 위치를 못 찾으면 미리보기를 원래대로 되돌린다 — 화면과 원문이
+    // 어긋난 채로 남는 것이 가장 나쁘다.
+    applyBoxSize(box, image.width, image.height)
+    return
+  }
+
+  const [from, to] = found
+  const current = parseImageMarkdown(view.state.doc.sliceString(from, to))
+  if (!current) {
+    applyBoxSize(box, image.width, image.height)
+    return
+  }
+
+  view.dispatch({
+    changes: { from, to, insert: imageMarkdownWithWidth(current, width) },
+  })
+}
+
+/** `pos` 를 덮고 있는 `Image` 노드의 범위. 없으면 `null`. */
+function findImageNodeAt(state: EditorState, pos: number): [number, number] | null {
+  const line = state.doc.lineAt(pos)
+  let hit: [number, number] | null = null
+  syntaxTree(state).iterate({
+    from: line.from,
+    to: line.to,
+    enter: (node) => {
+      if (hit || node.name !== 'Image') return
+      if (node.from <= pos && pos <= node.to) hit = [node.from, node.to]
+    },
+  })
+  return hit
 }
 
 /**
@@ -238,7 +414,7 @@ export function buildImageDecorations(
 
       out.push(
         Decoration.replace({
-          widget: new AttachmentWidget(parsed.url, parsed.alt),
+          widget: new AttachmentWidget(parsed),
         }).range(node.from, node.to),
       )
       covered?.push([node.from, node.to])

@@ -18,10 +18,12 @@ import { failureNotice } from '../lib/errors'
 import { formatRelative } from '../lib/time'
 import {
   applyWindowBackdrop,
+  EVENT_NOTES_CHANGED,
   EVENT_NOTE_META_CHANGED,
   focusNoteWindow,
   isTauri,
   listNotes,
+  newNoteWindow,
   openNoteWindow,
   searchNotes,
   softDeleteNote,
@@ -109,31 +111,63 @@ export default function BoardWindow() {
   }, [parsed.mode, parsed.term, colors, tick])
 
   // 다른 창에서 메모가 바뀌면 보드를 갱신한다.
+  //
+  // `sticky://notes-changed` 가 이 창의 생명선이다. 이게 없던 동안 보드는 처음 읽은
+  // 목록을 끝까지 들고 있어서, 다른 창에서 메모를 만들거나 지워도 화면이 그대로였다
+  // ("추가가 안 된다 / 삭제가 안 된다"로 보인 원인).
+  //
+  // 창 포커스에서도 한 번 더 읽는다 — 이벤트를 놓쳤거나 이 창이 열리기 전에 일어난
+  // 변경까지 따라잡는 최후의 보루다.
   useEffect(() => {
     if (!isTauri()) return
-    let dispose: (() => void) | undefined
-    listen(EVENT_NOTE_META_CHANGED, () => setTick((n) => n + 1))
-      .then((un) => {
-        dispose = un
-      })
+    const bump = () => setTick((n) => n + 1)
+    const disposers: Array<() => void> = []
+    let disposed = false
+
+    const track = (un: () => void) => {
+      if (disposed) un()
+      else disposers.push(un)
+    }
+
+    listen(EVENT_NOTES_CHANGED, bump)
+      .then(track)
       .catch((e) =>
         setNotice(failureNotice('다른 창의 변경을 따라가지 못합니다. 창을 다시 여세요', e)),
       )
-    return () => dispose?.()
+    listen(EVENT_NOTE_META_CHANGED, bump).then(track).catch(() => {
+      // 위 리스너가 이미 같은 사유로 실패했다 — 배너를 덮어쓰지 않는다.
+    })
+
+    window.addEventListener('focus', bump)
+    return () => {
+      disposed = true
+      window.removeEventListener('focus', bump)
+      disposers.forEach((un) => un())
+    }
   }, [])
 
-  // 우클릭 메뉴 닫기
+  // 우클릭 메뉴 닫기.
+  //
+  // 메뉴 **안쪽** 클릭은 target 으로 직접 걸러 낸다. 예전에는 메뉴 div 의
+  // `onMouseDown` 에서 `stopPropagation()` 하는 데 기댔는데, 그러면 React 의 이벤트
+  // 위임 경로(root 컨테이너)와 여기 window 리스너의 순서에 동작이 묶인다.
+  // 항목을 누르자마자 메뉴가 닫혀 `열기`·`삭제` 가 먹지 않는 종류의 버그가 나오는 자리다.
   useEffect(() => {
     if (!menu) return
     const close = () => setMenu(null)
+    const onPointerDown = (e: Event) => {
+      const target = e.target
+      if (target instanceof Element && target.closest('.board__menu')) return
+      close()
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close()
     }
-    window.addEventListener('mousedown', close)
+    window.addEventListener('mousedown', onPointerDown, true)
     window.addEventListener('resize', close)
     window.addEventListener('keydown', onKey)
     return () => {
-      window.removeEventListener('mousedown', close)
+      window.removeEventListener('mousedown', onPointerDown, true)
       window.removeEventListener('resize', close)
       window.removeEventListener('keydown', onKey)
     }
@@ -144,12 +178,27 @@ export default function BoardWindow() {
   }
 
   const openNote = async (id: string) => {
+    setMenu(null)
     try {
       await openNoteWindow(id)
       await focusNoteWindow(id)
     } catch (e) {
       setNotice(failureNotice('메모 창을 열지 못했습니다', e))
+      return
     }
+    // 창이 떴으면 `notes.open` 이 1이 됐다 — 카드의 점 색을 맞추려면 다시 읽어야 한다.
+    setTick((n) => n + 1)
+  }
+
+  /** 보드에서 바로 새 메모. 백엔드가 메모를 만들면서 창까지 띄운다. */
+  const createNote = async () => {
+    try {
+      await newNoteWindow()
+    } catch (e) {
+      setNotice(failureNotice('새 메모를 만들지 못했습니다', e))
+      return
+    }
+    setTick((n) => n + 1)
   }
 
   const deleteNote = async (id: string) => {
@@ -218,6 +267,19 @@ export default function BoardWindow() {
 
         <div className="board__spacer" />
 
+        {/* 보드에서 메모를 만들 방법이 아예 없었다 — 트레이·단축키·다른 메모 창의
+            `+` 를 거쳐야 했다. 툴바 오른쪽에 같은 동작을 둔다. */}
+        <button
+          type="button"
+          className="board__new"
+          title="새 메모"
+          aria-label="새 메모"
+          onClick={() => void createNote()}
+        >
+          <span aria-hidden="true">+</span>
+          <span>새 메모</span>
+        </button>
+
         <div className="board__status">
           <span className="board__status-dot" />
           <span>{headline}</span>
@@ -262,15 +324,11 @@ export default function BoardWindow() {
       )}
 
       {menu && (
-        <div
-          className="board__menu"
-          style={{ left: menu.x, top: menu.y }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <button type="button" onClick={() => void openNote(menu.note.id)}>
+        <div className="board__menu" style={{ left: menu.x, top: menu.y }} role="menu">
+          <button type="button" role="menuitem" onClick={() => void openNote(menu.note.id)}>
             열기
           </button>
-          <button type="button" onClick={() => void deleteNote(menu.note.id)}>
+          <button type="button" role="menuitem" onClick={() => void deleteNote(menu.note.id)}>
             삭제
           </button>
         </div>

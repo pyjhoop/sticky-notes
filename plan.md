@@ -43,8 +43,14 @@
 
 **메모 창 지오메트리**: 창 크기 = 종이 크기 + **사방 24px 투명 여백**. 디자인의 `drop-shadow(0 26px 44px rgba(0,0,0,.45))`를 CSS로 그리기 위한 공간이며, 동시에 네이티브 리사이즈 그랩 존 역할을 한다.
 
-- 드래그: 컨트롤 바 / 종이 배경 mousedown → `appWindow.startDragging()`
+- 드래그: **컨트롤 바 / 저장 푸터**의 빈 곳 mousedown → `appWindow.startDragging()`
 - 리사이즈: 창 가장자리(투명 여백)에서 네이티브 리사이즈 + 우하단 그립 → `startResizeDragging('SouthEast')`
+
+> **2026-07-26 변경 — 종이 배경은 더 이상 드래그 손잡이가 아니다.**
+> 그 영역은 사실상 에디터의 패딩이라, 본문 옆이나 마지막 줄 아래를 눌렀을 때 창이
+> 끌려가고 커서는 생기지 않았다(사용자 신고 #1). 이제 **누른 지점에 캐럿을 놓는다.**
+> 이동 손잡이는 컨트롤 바(38px)와 푸터이며, 두 곳의 드래그 판정을
+> "바 자신을 정확히 눌렀을 때"에서 "상호작용 요소가 아닌 곳 전부"로 넓혔다.
 
 **창 수명**: `✕` = 창 destroy + `notes.open=0`. 메모 자체는 DB에 남아 보드에 계속 보인다. 삭제는 보드 우클릭 → soft delete. 보드/설정 창도 닫으면 destroy(hide 아님 — 메모리 목적).
 
@@ -275,6 +281,8 @@ mica 배경(`window-vibrancy::apply_mica`), 커스텀 타이틀바(44px `—` `�
 
 붙여넣기 → 이미지 바이트를 `%APPDATA%\...\attachments\<uuid>.png`에 저장 → `![](attachments/x.png)` 삽입 → `convertFileSrc()`로 인라인 위젯 렌더. 디자인의 96×64 플레이스홀더 스타일 재사용.
 
+**크기 조절** (2026-07-26 추가) — 위젯 우하단 손잡이를 끌면 너비가 바뀐다. 크기는 **문서 텍스트에** `![|400](attachments/x.png)` 로 남는다. 옵시디언과 같은 문법이라 내보낸 `.md`가 볼트에서 그대로 렌더된다(HTML `<img width>`를 쓰지 않는 이유). 끄는 동안 바뀌는 것은 위젯 상자의 인라인 `width`뿐이고, **문서는 손을 뗄 때 트랜잭션 한 번으로** 바뀐다(절대규칙 4 — mousemove마다 dispatch하면 undo가 수백 개로 쪼개진다). 손잡이 더블클릭 → 크기 지정 제거.
+
 NSIS 인스톨러 빌드, 앱 아이콘, 자동 시작.
 
 ---
@@ -299,6 +307,22 @@ NSIS 인스톨러 빌드, 앱 아이콘, 자동 시작.
 `[skip ci]`가 커밋 메시지에 있으면 건너뛴다 (진행 표 갱신 같은 문서 커밋용).
 
 빌드 실패는 **트랙 병합을 되돌리지 않는다.** 리더가 수정 에이전트를 붙여 main에서 고친다.
+
+### 자동 업데이트 (2026-07-26 추가)
+
+설치된 앱이 릴리스 버전을 비교해 스스로 새 버전을 받아 설치한다.
+
+| 조각 | 위치 |
+|---|---|
+| 확인·다운로드·설치 | `src-tauri/src/update.rs` — `tauri-plugin-updater`. **전부 Rust에서 돈다** (웹뷰 CSP가 `connect-src 'self' ipc:`라 프론트는 GitHub에 못 붙고, 그래야 웹뷰에 updater 권한을 열지 않아도 된다) |
+| 엔드포인트 | `tauri.conf.json` → `https://github.com/pyjhoop/sticky-notes/releases/latest/download/latest.json` (`/releases/latest/`는 prerelease가 아닌 최신 릴리스로 리다이렉트) |
+| `latest.json` | CI가 만들어 릴리스 자산으로 붙인다. `version` · `platforms."windows-x86_64".{signature,url}` |
+| 서명 | 인스톨러 옆의 `.sig` (`bundle.createUpdaterArtifacts: true`). 공개키는 `tauri.conf.json`의 `plugins.updater.pubkey`, **개인키는 저장소에 없다** — GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` |
+| 확인 시점 | 시작 4초 뒤 1회(백그라운드) + 설정 창 `UPDATE` 섹션의 `지금 확인` |
+| 노출 | 메모 창 배너(`설치` / `나중에`) · 설정 창 `UPDATE` 섹션 |
+| 설치 | 열린 메모에 저장을 브로드캐스트하고 400ms 기다린 뒤 다운로드 → NSIS `passive` 설치 → `app.restart()` |
+
+**서명 키가 Secrets에 없으면 CI가 명시적으로 실패한다.** 서명 없이 빌드하면 인스톨러는 나오지만 `.sig`가 없어 `latest.json`을 만들 수 없고, 배포된 앱은 "업데이트가 있다는데 설치가 안 되는" 상태가 된다.
 
 ---
 

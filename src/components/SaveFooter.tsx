@@ -39,7 +39,9 @@ export default function SaveFooter({ title, status, savedAt, onDragStart }: Save
     <div
       className="note-footer"
       onMouseDown={(e) => {
-        if (e.button === 0 && e.target === e.currentTarget) onDragStart?.(e)
+        // 푸터에는 상호작용 요소가 없다 — 제목·시각 위에서도 창이 끌려야 한다.
+        // (본문 여백은 이제 커서 배치라 이 바가 컨트롤 바와 함께 이동 손잡이다)
+        if (e.button === 0) onDragStart?.(e)
       }}
     >
       <span className={`note-footer__dot${saving ? ' is-saving' : ''}`} />

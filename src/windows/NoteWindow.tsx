@@ -17,7 +17,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react'
 
 import ColorPalette from '../components/ColorPalette'
 import ControlBar from '../components/ControlBar'
-import NoteEditor from '../components/NoteEditor'
+import NoteEditor, { type NoteEditorHandle } from '../components/NoteEditor'
 import SaveFooter, { type SaveStatus } from '../components/SaveFooter'
 import { failureNotice } from '../lib/errors'
 import {
@@ -30,8 +30,10 @@ import {
 import {
   closeNoteWindow,
   getNote,
+  getPendingUpdate,
   getSettings,
   getShortcutFailures,
+  installUpdate,
   isTauri,
   newNoteWindow,
   saveNote,
@@ -39,8 +41,10 @@ import {
   setNoteMeta,
   EVENT_NOTE_META_CHANGED,
   EVENT_SAVE_ALL,
+  EVENT_UPDATE_AVAILABLE,
   type NoteMeta,
   type ShortcutBinding,
+  type UpdateInfo,
 } from '../lib/ipc'
 
 import '../styles/note.css'
@@ -113,6 +117,18 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [failures, setFailures] = useState<ShortcutBinding[]>([])
   const [alertDismissed, setAlertDismissed] = useState(false)
+  // 자동 업데이트 — 새 버전이 있으면 종이 아래 배너로 알린다
+  const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  const [updateDismissed, setUpdateDismissed] = useState(false)
+  const [installing, setInstalling] = useState(false)
+
+  /**
+   * 본문 에디터 핸들 — 커서를 넣기 위한 것.
+   *
+   * `drawSelection()` 의 캐럿은 에디터가 포커스를 가진 동안에만 그려진다. 창만
+   * 활성화되고 포커스가 `<body>` 에 남으면 깜빡이는 커서가 아예 없다 (신고 #1).
+   */
+  const editorRef = useRef<NoteEditorHandle | null>(null)
   // 백엔드 호출 실패 — 조용히 넘기지 않는다 (ipc 폴백 제거 · CLAUDE.md "흔한 함정")
   const [error, setError] = useState<string | null>(null)
 
@@ -260,12 +276,32 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
     return () => window.removeEventListener('wheel', onWheel)
   }, [markOpacityAdjusted, pushMeta])
 
+  // ── 커서 ────────────────────────────────────────────────
+  /**
+   * 창이 활성화됐을 때 커서를 본문으로 돌려놓는다.
+   *
+   * 컨트롤 바나 푸터에서 `startDragging()` 을 하면 네이티브 드래그 루프가 돌면서
+   * 웹뷰가 포커스를 잃는다. 드래그가 끝나고 창이 다시 활성화돼도 포커스는 `<body>` 에
+   * 있어서 캐럿이 사라진 채로 남는다. 여기서 되돌린다.
+   *
+   * **이미 다른 컨트롤(슬라이더·입력)에 포커스가 가 있으면 건드리지 않는다** —
+   * 슬라이더를 잡고 있는데 커서를 뺏으면 키보드 조작이 끊긴다.
+   */
+  const focusEditor = useCallback(() => {
+    const active = document.activeElement
+    if (active && active !== document.body && active.closest('.note-controls, .note-alert')) return
+    editorRef.current?.focus()
+  }, [])
+
   // ── 포커스/블러 ─────────────────────────────────────────
   // autoFade OFF → 항상 note.opacity
   // autoFade ON  → 포커스 시 100%, 블러 시 note.opacity (transition 180ms ease-out)
   useEffect(() => {
     if (!isTauri()) {
-      const onFocus = () => setFocused(true)
+      const onFocus = () => {
+        setFocused(true)
+        focusEditor()
+      }
       const onBlur = () => {
         setFocused(false)
         void flushRef.current()
@@ -284,6 +320,8 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
         setFocused(payload)
         // 창 블러 시 강제 flush
         if (!payload) void flushRef.current()
+        // 웹뷰가 포커스를 넘겨받은 뒤에 커서를 넣어야 한다 — 한 프레임 뒤로 미룬다.
+        else requestAnimationFrame(focusEditor)
       })
       if (disposed) un()
       else unlisten = un
@@ -292,7 +330,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
       disposed = true
       unlisten?.()
     }
-  }, [])
+  }, [focusEditor])
 
   // ── 트레이 "모든 메모 저장" + 전역 핀 토글 ────────────────
   useEffect(() => {
@@ -323,6 +361,43 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
       unlisteners.forEach((un) => un())
     }
   }, [noteId])
+
+  // ── 자동 업데이트 알림 ───────────────────────────────────
+  // 시작 시 백엔드가 한 번 확인해 둔 결과를 먼저 읽고(이 창이 나중에 열렸을 수 있다),
+  // 그 뒤에 오는 확인 결과는 이벤트로 받는다.
+  useEffect(() => {
+    if (!isTauri()) return
+    let disposed = false
+    let unlisten: (() => void) | null = null
+
+    getPendingUpdate()
+      .then((u) => {
+        if (!disposed) setUpdate(u)
+      })
+      // 업데이트 확인 실패로 메모 창에 빨간 배너를 띄우지는 않는다 — 오프라인이 정상이다.
+      .catch(() => {})
+
+    void import('@tauri-apps/api/event').then(async ({ listen }) => {
+      const un = await listen<UpdateInfo>(EVENT_UPDATE_AVAILABLE, (e) => {
+        setUpdate(e.payload)
+        setUpdateDismissed(false)
+      })
+      if (disposed) un()
+      else unlisten = un
+    })
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [])
+
+  const onInstallUpdate = useCallback(() => {
+    setInstalling(true)
+    void installUpdate().catch((e) => {
+      setInstalling(false)
+      setError(failureNotice('업데이트를 설치하지 못했습니다', e))
+    })
+  }, [])
 
   // ── 창 종료 시 강제 flush ────────────────────────────────
   useEffect(() => {
@@ -461,11 +536,24 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
           <div
             className="note-body"
             onMouseDown={(e) => {
-              // 종이 배경(본문 패딩) mousedown → 창 드래그
-              if (e.button === 0 && e.target === e.currentTarget) onDragStart(e)
+              // 종이 배경(본문 패딩)을 눌렀을 때 — **창 드래그가 아니라 커서를 넣는다.**
+              //
+              // 예전에는 여기서 `startDragging()` 을 걸었다. 그런데 이 여백은 사실상
+              // 에디터의 패딩이라, 본문 옆이나 마지막 줄 아래를 눌렀을 때 창이 끌려가고
+              // 커서는 생기지 않았다(신고 #1). 창 이동은 컨트롤 바(38px)와 저장 푸터에
+              // 그대로 남아 있다.
+              if (e.button !== 0 || e.target !== e.currentTarget) return
+              e.preventDefault()
+              editorRef.current?.focusAt(e.clientX, e.clientY)
             }}
           >
-            <NoteEditor value={body} onChange={onEditorChange} />
+            <NoteEditor
+              ref={editorRef}
+              value={body}
+              onChange={onEditorChange}
+              // 창이 뜨자마자 바로 쓸 수 있어야 한다 — `+` 로 만든 새 메모가 특히 그렇다.
+              autoFocus
+            />
           </div>
 
           {error && (
@@ -478,6 +566,31 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
                 onClick={() => setError(null)}
               >
                 닫기
+              </button>
+            </div>
+          )}
+
+          {update && !updateDismissed && (
+            <div className="note-alert note-alert--update" role="status">
+              <span className="note-alert__dot" />
+              <span className="note-alert__text">
+                새 버전 {update.version} 이 있습니다
+                <span className="note-alert__keys">현재 {update.currentVersion}</span>
+              </span>
+              <button
+                type="button"
+                className="note-alert__dismiss"
+                disabled={installing}
+                onClick={onInstallUpdate}
+              >
+                {installing ? '설치 중…' : '설치'}
+              </button>
+              <button
+                type="button"
+                className="note-alert__dismiss"
+                onClick={() => setUpdateDismissed(true)}
+              >
+                나중에
               </button>
             </div>
           )}

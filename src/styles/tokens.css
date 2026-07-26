@@ -97,6 +97,9 @@
   --grip-color: rgba(0, 0, 0, 0.22);
   --attach-border: rgba(0, 0, 0, 0.14);
   --attach-stripe: rgba(0, 0, 0, 0.055);
+  /* 첨부 크기 조절 손잡이 — 메모 창 그립(--grip-color)보다 한 단계 진하다.
+     이미지 위에 얹히므로 같은 농도로는 보이지 않는다 */
+  --attach-handle-bg: rgba(0, 0, 0, 0.45);
   --popover-bg: rgba(252, 250, 247, 0.96);
 
   /* ── 상태색 ─────────────────────────────────────────── */
@@ -197,6 +200,7 @@
 
   --attach-w: 96px;
   --attach-h: 64px;
+  --attach-handle: 14px;
 
   --titlebar-h: 40px;
   --titlebar-btn-w: 44px;

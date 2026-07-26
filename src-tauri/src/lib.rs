@@ -12,6 +12,7 @@ pub mod export;
 pub mod notes;
 pub mod shortcuts;
 pub mod tray;
+pub mod update;
 pub mod win;
 pub mod windows;
 
@@ -38,13 +39,18 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
+        // 확인·다운로드·설치는 전부 `update.rs`(Rust)에서 돈다.
+        // 웹뷰에 updater 권한을 열지 않으므로 CSP도 그대로 둘 수 있다.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(db::Db::default())
         .manage(shortcuts::ShortcutState::default())
+        .manage(update::UpdateState::default())
         .setup(|app| {
             db::init(app)?;
             tray::init(app)?;
             shortcuts::init(app)?;
             windows::bootstrap(app)?;
+            update::bootstrap(app);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -93,7 +99,26 @@ pub fn run() {
             shortcuts::get_shortcut_failures,
             shortcuts::get_autostart,
             shortcuts::set_autostart,
+            // ── update.rs · 자동 업데이트 ───────────────────────────
+            update::get_app_version,
+            update::check_update,
+            update::install_update,
+            update::get_pending_update,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, event| {
+            // 메모 창을 전부 ✕로 닫아도 앱은 살아 있어야 한다 — 상주형 트레이 앱이다.
+            //
+            // 2026-07-26 사용자 결함 신고 #2. Tauri 는 마지막 창이 사라지면
+            // `ExitRequested` 를 올리고 기본 동작으로 프로세스를 끝낸다. 그래서 메모를
+            // 전부 닫으면 트레이 아이콘까지 사라지고 앱을 다시 띄울 방법이 없었다.
+            //
+            // `code` 가 실린 종료(트레이 `종료` → `app.exit(0)`)만 그대로 통과시킨다.
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

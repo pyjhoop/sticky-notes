@@ -166,12 +166,36 @@ export interface ShortcutBinding {
 /** `apply_window_backdrop` 결과 — mica → acrylic → 불투명 폴백 단계 */
 export type Backdrop = 'mica' | 'acrylic' | 'opaque'
 
+/**
+ * 설치 가능한 새 버전. `src-tauri/src/update.rs` 의 `UpdateInfo` 와 1:1.
+ *
+ * 확인·다운로드·설치는 전부 백엔드가 한다 — 웹뷰 CSP 가 외부 호스트를 막고,
+ * 그래야 updater 권한을 웹뷰에 열지 않아도 된다.
+ */
+export interface UpdateInfo {
+  /** 새 버전 (`1.0.42`) */
+  version: string
+  /** 지금 설치돼 있는 버전 */
+  currentVersion: string
+  notes: string | null
+  date: string | null
+}
+
 // ─────────────────────────────────────────────────────────────
-// 이벤트 이름 (src-tauri/src/windows.rs 와 동일)
+// 이벤트 이름 (src-tauri/src/windows.rs · update.rs 와 동일)
 // ─────────────────────────────────────────────────────────────
 
 export const EVENT_SAVE_ALL = 'sticky://save-all'
 export const EVENT_NOTE_META_CHANGED = 'sticky://note-meta-changed'
+/**
+ * **메모 집합이 바뀌었다** — 생성 · 저장 · 메타 변경 · 삭제 · 창 열기/닫기.
+ *
+ * 보드 창이 이걸 듣고 목록을 다시 읽는다. 이 이벤트가 없던 동안 보드는 처음 읽은
+ * 목록을 끝까지 들고 있었고, 다른 창에서 메모를 만들거나 지워도 화면이 그대로였다.
+ */
+export const EVENT_NOTES_CHANGED = 'sticky://notes-changed'
+/** 페이로드는 `UpdateInfo`. */
+export const EVENT_UPDATE_AVAILABLE = 'sticky://update-available'
 
 // ─────────────────────────────────────────────────────────────
 // invoke 래퍼
@@ -420,4 +444,32 @@ export async function saveAttachment(bytes: Uint8Array, extHint: string): Promis
 /** 첨부 폴더 절대 경로. `convertFileSrc()` 에 넘길 경로를 만드는 데 쓴다. */
 export function getAttachmentsDir(): Promise<string> {
   return call('get_attachments_dir')
+}
+
+// ─────────────────────────────────────────────────────────────
+// update — 자동 업데이트
+// ─────────────────────────────────────────────────────────────
+
+/** 지금 설치돼 있는 앱 버전 (`1.0.42`). */
+export function getAppVersion(): Promise<string> {
+  return call('get_app_version')
+}
+
+/** 엔드포인트를 지금 확인한다. 새 버전이 없으면 `null`. 네트워크 실패는 던진다. */
+export function checkUpdate(): Promise<UpdateInfo | null> {
+  return call('check_update')
+}
+
+/** 시작 시 확인해 둔 결과. 나중에 열린 창이 배너를 띄우는 데 쓴다. */
+export function getPendingUpdate(): Promise<UpdateInfo | null> {
+  return call('get_pending_update')
+}
+
+/**
+ * 새 버전을 내려받아 설치하고 앱을 재시작한다.
+ *
+ * 성공하면 **이 Promise 는 resolve 되지 않는다** — 프로세스가 교체된다.
+ */
+export function installUpdate(): Promise<void> {
+  return call('install_update')
 }

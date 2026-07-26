@@ -138,6 +138,7 @@
   --dark-text-menu: #dcd6ce;
   --dark-placeholder: #8f8880;
   --dark-knob-off: #d8d2c8;
+  --dark-knob-on: #fff; /* design:222,226 — 토글 ON 상태 knob */
 
   --blur-board: 34px;
   --blur-settings: 30px;
@@ -231,6 +232,10 @@
   --shadow-popover: 0 12px 28px rgba(0, 0, 0, 0.22);
   --shadow-tray: 0 16px 34px rgba(0, 0, 0, 0.45);
   --shadow-thumb: 0 1px 2px rgba(0, 0, 0, 0.25);
+  /* 악센트·강조 채움 위에 올라가는 글자/아이콘.
+     design:55(메모 닫기 hover) · 74,78,82(체크박스 마크) · 129(완료 체크) */
+  --on-accent: #fff;
+
   --range-thumb-bg: #fff;
   --range-thumb-border: rgba(0, 0, 0, 0.3);
 

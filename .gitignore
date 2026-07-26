@@ -17,3 +17,6 @@ Thumbs.db
 npm-debug.log*
 .vite/
 coverage/
+
+# 에이전트 격리 worktree (git worktree 가 관리한다 — 추적하지 않는다)
+.claude/worktrees/

@@ -218,6 +218,221 @@ describe('캐럿', () => {
 })
 
 /**
+ * 코드블록 안에서의 캐럿·선택.
+ *
+ * 사용자 신고 — "마크다운 내에서 캐럿이 안 보이고 다크 모드여서."
+ * 캐럿 색 `--ink` 와 코드블록 배경 `--code-bg` 가 **둘 다 #2a2521** 이라 묻힌다.
+ *
+ * 캐럿 div 는 `.cm-cursorLayer` 안에 있고 그건 `.cm-line` 의 자손이 아니므로
+ * (`.cm-code-line .cm-cursor` 는 **절대 매칭되지 않는다**) 상태 판정 → 에디터 루트
+ * class 로 우회한다. 그래서 여기서 지키는 것은 두 가지다:
+ *   ① 커서 위치에 따라 루트 class 가 실제로 붙고 떨어지는가 (동작)
+ *   ② 그 class 에 걸린 색 규칙이 주입되는가 (CSS)
+ * ①이 본체다 — ②만 있으면 판정 로직을 통째로 지워도 통과한다.
+ */
+const CODE_DOC = ['본문 한 줄', '', '```js', 'const x = 1', '```', '', '뒤 본문'].join('\n')
+
+describe('코드블록 안 캐럿·선택', () => {
+  /** 지정한 줄(1-based)의 지정 칸에 커서를 두고 루트 class 목록을 돌려준다. */
+  function caretAt(editor: EditorView, lineNumber: number, column = 0): DOMTokenList {
+    const line = editor.state.doc.line(lineNumber)
+    editor.dispatch({ selection: EditorSelection.cursor(line.from + column) })
+    return editor.dom.classList
+  }
+
+  it('커서가 코드블록 줄 위일 때만 cm-caret-in-code 가 붙는다', () => {
+    const editor = mount(CODE_DOC)
+
+    // 종이 본문 — 붙지 않는다
+    expect(caretAt(editor, 1, 2).contains('cm-caret-in-code')).toBe(false)
+    // 여는 펜스 · 코드 본문 · 닫는 펜스 — 전부 어두운 배경 안이므로 붙는다
+    expect(caretAt(editor, 3, 1).contains('cm-caret-in-code')).toBe(true)
+    expect(caretAt(editor, 4, 5).contains('cm-caret-in-code')).toBe(true)
+    expect(caretAt(editor, 5, 0).contains('cm-caret-in-code')).toBe(true)
+    // 블록 뒤 빈 줄 · 뒤 본문 — 다시 떨어진다
+    expect(caretAt(editor, 6, 0).contains('cm-caret-in-code')).toBe(false)
+    expect(caretAt(editor, 7, 1).contains('cm-caret-in-code')).toBe(false)
+  })
+
+  it('클래스가 붙는 줄과 어두운 배경이 깔리는 줄이 정확히 같다', () => {
+    const editor = mount(CODE_DOC)
+    const codeLines = new Set<number>()
+    for (const el of Array.from(editor.dom.querySelectorAll('.cm-code-line'))) {
+      const pos = editor.posAtDOM(el)
+      codeLines.add(editor.state.doc.lineAt(pos).number)
+    }
+    expect(codeLines.size).toBeGreaterThan(0)
+
+    for (let n = 1; n <= editor.state.doc.lines; n++) {
+      expect(caretAt(editor, n).contains('cm-caret-in-code'), `${n}번째 줄`).toBe(codeLines.has(n))
+    }
+  })
+
+  it('코드블록 안에서만 선택 영역 색을 바꾼다 — 걸친 선택은 건드리지 않는다', () => {
+    const editor = mount(CODE_DOC)
+    const code = editor.state.doc.line(4)
+
+    // 코드블록 한 줄 안의 선택
+    editor.dispatch({ selection: EditorSelection.range(code.from, code.to) })
+    expect(editor.dom.classList.contains('cm-selection-in-code')).toBe(true)
+
+    // 종이 본문에서 코드블록으로 걸친 선택 — 한쪽에서 반드시 묻히므로 기본색을 쓴다
+    editor.dispatch({
+      selection: EditorSelection.range(editor.state.doc.line(1).from, code.to),
+    })
+    expect(editor.dom.classList.contains('cm-selection-in-code')).toBe(false)
+
+    // 빈 커서는 선택이 아니다
+    editor.dispatch({ selection: EditorSelection.cursor(code.from) })
+    expect(editor.dom.classList.contains('cm-selection-in-code')).toBe(false)
+  })
+
+  it('테마가 코드블록 전용 캐럿·선택 색을 주입한다', () => {
+    mount(CODE_DOC)
+
+    // 캐럿은 코드 본문색으로 바뀐다 (종이에서 --ink 인 것과 같은 규칙)
+    const caret = ruleFor('.cm-caret-in-code .cm-cursor')
+    expect(caret).toContain('border-left-color: var(--code-fg)')
+    // 기본 캐럿 규칙은 그대로 --ink 여야 한다 — 종이 위 캐럿을 망가뜨리면 안 된다
+    expect(ruleFor('border-left-width: var(--caret-w)')).toContain(
+      'border-left-color: var(--ink)',
+    )
+
+    // 선택은 전용 토큰. --selection-bg 를 그대로 쓰면 어두운 배경에서 묻힌다
+    const selection = ruleFor('.cm-selection-in-code .cm-selectionBackground')
+    expect(selection).toContain('background-color: var(--selection-bg-code)')
+  })
+
+  it('자손 셀렉터로 캐럿을 고치려 들지 않는다 (구조상 매칭되지 않는다)', () => {
+    // `.cm-cursorLayer` 는 `.cm-line` 의 형제의 부모 쪽에 있다. 아래 셀렉터는
+    // 어떤 DOM 에서도 매칭되지 않으므로, 누가 다시 넣으면 조용히 죽는 규칙이 된다.
+    mount(CODE_DOC)
+    expect(injectedCss()).not.toContain('.cm-code-line .cm-cursor')
+    expect(injectedCss()).not.toContain('.cm-code-line .cm-selectionBackground')
+  })
+})
+
+/**
+ * Tab / Shift-Tab 들여쓰기.
+ *
+ * 사용자 신고 — "코드블록 내부에 탭이 안 먹는데 이건 어쩔 수 없나?"
+ * `defaultKeymap`은 Tab을 일부러 비워 둔다(포커스 이동 규약). 코드블록·목록
+ * 안에서만 들여쓰기로 쓰고 그 밖에서는 흘려보낸다 — 근거는 `editor/indent.ts`.
+ *
+ * **CSS를 보는 테스트가 아니다.** 실제 keydown 이벤트를 만들어 문서 텍스트가
+ * 바뀌는지로 검증한다.
+ */
+describe('Tab 들여쓰기', () => {
+  /** 진짜 keydown을 흘려보내고, CodeMirror가 기본 동작을 막았는지 돌려준다. */
+  function pressTab(editor: EditorView, shift = false): boolean {
+    const event = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      code: 'Tab',
+      keyCode: 9,
+      shiftKey: shift,
+      bubbles: true,
+      cancelable: true,
+    })
+    editor.contentDOM.dispatchEvent(event)
+    return event.defaultPrevented
+  }
+
+  /** `line`번째 줄의 `column`칸에 커서를 둔다. */
+  function put(editor: EditorView, line: number, column = 0): void {
+    editor.dispatch({ selection: EditorSelection.cursor(editor.state.doc.line(line).from + column) })
+  }
+
+  it('코드블록 안에서 Tab이 줄을 들여쓴다', () => {
+    const editor = mount('```js\nconst x = 1\n```')
+    put(editor, 2, 5)
+    expect(pressTab(editor)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('```js\n  const x = 1\n```')
+  })
+
+  it('Shift-Tab이 되돌린다', () => {
+    const editor = mount('```js\n    const x = 1\n```')
+    put(editor, 2, 6)
+    expect(pressTab(editor, true)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('```js\n  const x = 1\n```')
+  })
+
+  it('목록 안에서도 먹는다 — 할 일·순서 목록 포함', () => {
+    const editor = mount('- 항목\n- [ ] 할 일\n\n1. 첫째')
+    put(editor, 1, 3)
+    expect(pressTab(editor)).toBe(true)
+    put(editor, 2, 3)
+    expect(pressTab(editor)).toBe(true)
+    put(editor, 4, 3)
+    expect(pressTab(editor)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('  - 항목\n  - [ ] 할 일\n\n  1. 첫째')
+  })
+
+  /**
+   * 접근성 탈출구. 문단에서 Tab이 먹히면 키보드만으로 에디터를 못 빠져나가고,
+   * 스페이스 2칸이 두 번 쌓이면 CommonMark의 들여쓴 코드블록이 되어 문단이
+   * 검은 상자로 변한다.
+   */
+  it('문단·제목·인용에서는 먹지 않는다 — 문서도 안 바뀌고 기본 동작도 안 막는다', () => {
+    const doc = '# 제목\n\n그냥 문단\n\n> 인용'
+    const editor = mount(doc)
+    for (const line of [1, 3, 5]) {
+      put(editor, line, 1)
+      expect(pressTab(editor), `${line}번째 줄`).toBe(false)
+    }
+    expect(editor.state.doc.toString()).toBe(doc)
+  })
+
+  it('코드블록과 문단에 걸친 선택은 들여쓰지 않는다', () => {
+    const doc = '문단\n\n```js\nconst x = 1\n```'
+    const editor = mount(doc)
+    editor.dispatch({
+      selection: EditorSelection.range(0, editor.state.doc.line(4).to),
+    })
+    expect(pressTab(editor)).toBe(false)
+    expect(editor.state.doc.toString()).toBe(doc)
+  })
+
+  /**
+   * 탭 문자 금지. `process.md` 통합 게이트 #3 — Rust `after_space_indent()`와
+   * 프론트 `FENCE_OPEN_RE`는 **스페이스만** 0~3칸을 펜스 들여쓰기로 인정하는데
+   * lezer-markdown은 CommonMark대로 탭을 4칸으로 확장한다. 탭을 넣으면 세 파서가
+   * 갈린다. 스페이스 2칸이면 한 번(2칸)은 셋 다 펜스, 두 번(4칸)은 셋 다 펜스 아님.
+   */
+  it('넣는 것은 스페이스 2칸이다 — 탭 문자를 쓰지 않는다', () => {
+    const editor = mount('```js\nx\n```')
+    put(editor, 2)
+    pressTab(editor)
+    pressTab(editor)
+    expect(editor.state.doc.toString()).toBe('```js\n    x\n```')
+    expect(editor.state.doc.toString()).not.toContain('\t')
+  })
+
+  it('펜스 줄을 한 번 들여써도 프론트·Rust의 펜스 판정이 유지된다', () => {
+    const editor = mount('```js\nx\n```')
+    put(editor, 1)
+    pressTab(editor)
+    // src/lib/markdown.ts 의 FENCE_OPEN_RE 와 src-tauri/src/notes.rs 의
+    // after_space_indent() 가 함께 인정하는 범위 = 스페이스 0~3칸
+    const fenceOpen = /^ {0,3}(`{3,}|~{3,})/
+    expect(fenceOpen.test(editor.state.doc.line(1).text)).toBe(true)
+    // 여전히 코드블록으로 파싱된다 (lezer 쪽도 같은 판정)
+    expect(editor.dom.querySelectorAll('.cm-code-line').length).toBe(3)
+  })
+
+  it('선택한 여러 줄을 한 번에 들여쓴다', () => {
+    const editor = mount('```js\na\nb\n```')
+    editor.dispatch({
+      selection: EditorSelection.range(
+        editor.state.doc.line(2).from,
+        editor.state.doc.line(3).to,
+      ),
+    })
+    expect(pressTab(editor)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('```js\n  a\n  b\n```')
+  })
+})
+
+/**
  * 스크롤바.
  *
  * 사용자 신고 — "스크롤 디자인이 너무 크다". 스타일이 하나도 없어서 WebView2
@@ -255,6 +470,36 @@ describe('스크롤바', () => {
     const css = injectedCss()
     expect(css).not.toMatch(/scrollbar-width\s*:/)
     expect(css).not.toMatch(/scrollbar-color\s*:/)
+  })
+
+  /**
+   * 사용자 신고 — "스크롤과 우측 끝 여백이 많다. 스크롤을 우측 끝으로 붙여줘."
+   *
+   * 원인은 여백을 **누가 주느냐**였다. `.note-body` 가 좌우 20px 을 주면 그 안에
+   * 들어가는 `.cm-scroller` 의 오른쪽 경계가 종이 끝에서 20px 안으로 밀리고,
+   * 스크롤바는 스크롤러 경계에 그려지므로 함께 밀린다. 여백을 없앨 수는 없으니
+   * (글자가 종이에 붙는다) 여백을 스크롤러 **안쪽**(`.cm-content`)으로 옮겼다.
+   *
+   * jsdom 에는 레이아웃도 스크롤바도 없고 `note.css` 는 로드되지도 않는다.
+   * 여기서 지킬 수 있는 것은 **여백이 스크롤러 안쪽에 있다**는 구조 하나다 —
+   * 그것이 스크롤바가 끝에 붙는 유일한 조건이다.
+   */
+  it('본문 여백은 스크롤러 바깥이 아니라 안쪽(.cm-content)에 있다', () => {
+    mount('한 줄')
+
+    const content = ruleFor('.cm-content {')
+    expect(content).toContain('padding-left: var(--note-body-pad-x)')
+    expect(content).toContain('padding-top: var(--note-body-pad-y)')
+    expect(content).toContain('padding-bottom: var(--note-body-pad-bottom)')
+    // 오른쪽만 스크롤바 예약 폭을 뺀다 — 그래야 글자 좌우 여백이 20px 로 같아진다
+    expect(content).toContain(
+      'padding-right: calc(var(--note-body-pad-x) - var(--scrollbar-w))',
+    )
+
+    // 스크롤러가 여백을 갖는 순간 스크롤바가 다시 안쪽으로 밀린다
+    const scroller = ruleFor('.cm-scroller {')
+    expect(scroller).not.toMatch(/(^|[;{ ])padding/)
+    expect(scroller).not.toMatch(/(^|[;{ ])margin/)
   })
 
   it('유휴 ↔ 호버가 트랙 폭을 바꾸지 않는다 (레이아웃 시프트 0)', () => {

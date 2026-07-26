@@ -472,6 +472,36 @@ describe('스크롤바', () => {
     expect(css).not.toMatch(/scrollbar-color\s*:/)
   })
 
+  /**
+   * 사용자 신고 — "스크롤과 우측 끝 여백이 많다. 스크롤을 우측 끝으로 붙여줘."
+   *
+   * 원인은 여백을 **누가 주느냐**였다. `.note-body` 가 좌우 20px 을 주면 그 안에
+   * 들어가는 `.cm-scroller` 의 오른쪽 경계가 종이 끝에서 20px 안으로 밀리고,
+   * 스크롤바는 스크롤러 경계에 그려지므로 함께 밀린다. 여백을 없앨 수는 없으니
+   * (글자가 종이에 붙는다) 여백을 스크롤러 **안쪽**(`.cm-content`)으로 옮겼다.
+   *
+   * jsdom 에는 레이아웃도 스크롤바도 없고 `note.css` 는 로드되지도 않는다.
+   * 여기서 지킬 수 있는 것은 **여백이 스크롤러 안쪽에 있다**는 구조 하나다 —
+   * 그것이 스크롤바가 끝에 붙는 유일한 조건이다.
+   */
+  it('본문 여백은 스크롤러 바깥이 아니라 안쪽(.cm-content)에 있다', () => {
+    mount('한 줄')
+
+    const content = ruleFor('.cm-content {')
+    expect(content).toContain('padding-left: var(--note-body-pad-x)')
+    expect(content).toContain('padding-top: var(--note-body-pad-y)')
+    expect(content).toContain('padding-bottom: var(--note-body-pad-bottom)')
+    // 오른쪽만 스크롤바 예약 폭을 뺀다 — 그래야 글자 좌우 여백이 20px 로 같아진다
+    expect(content).toContain(
+      'padding-right: calc(var(--note-body-pad-x) - var(--scrollbar-w))',
+    )
+
+    // 스크롤러가 여백을 갖는 순간 스크롤바가 다시 안쪽으로 밀린다
+    const scroller = ruleFor('.cm-scroller {')
+    expect(scroller).not.toMatch(/(^|[;{ ])padding/)
+    expect(scroller).not.toMatch(/(^|[;{ ])margin/)
+  })
+
   it('유휴 ↔ 호버가 트랙 폭을 바꾸지 않는다 (레이아웃 시프트 0)', () => {
     mount('한 줄')
 

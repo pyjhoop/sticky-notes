@@ -95,20 +95,41 @@ export const noteEditorTheme = EditorView.theme(
         borderWidth: 'calc((var(--scrollbar-w) - var(--scrollbar-thumb-w-hover)) / 2)',
       },
 
+    /* ── 본문 여백 ────────────────────────────────────────────
+     * 디자인 원본 68행의 `padding:18px 20px 14px`. 예전에는 이 여백을 바깥
+     * `.note-body` 가 줬는데, 그러면 그 안에 들어가는 `.cm-scroller` 의 오른쪽
+     * 경계가 종이 끝에서 20px 안으로 밀리고 **스크롤바도 함께 밀린다**
+     * (2026-07-26 사용자 신고 — "스크롤을 우측 끝으로 붙여줘").
+     * 그래서 여백을 스크롤러 **안쪽**, 즉 여기로 옮겼다. 스크롤러는 종이 폭을
+     * 다 쓰고 스크롤바는 종이 우측 끝에 붙는다. `src/styles/note.css` 참조.
+     *
+     * ▸ 오른쪽만 `--scrollbar-w` 를 뺀다.
+     *   `scrollbar-gutter: stable` 의 거터는 **내부 border 경계와 padding 상자
+     *   바깥 사이**에 놓인다(CSS Overflow 4). 즉 `.cm-content` 가 받는 폭은 이미
+     *   8px 줄어 있고, 그 위에 20px 을 더 주면 글자 오른쪽 여백이 28px 이 되어
+     *   왼쪽 20px 과 어긋난다(옮기기 전에도 그랬다). 12px 을 주면 12+8 = 20px 로
+     *   좌우가 같아지고, 스크롤바가 생겨도 사라져도 폭은 그대로다(시프트 0).
+     *   전제는 `--scrollbar-w(8px) < --note-body-pad-x(20px)` 이다.
+     *
+     * ▸ 코드블록 배경은 줄(`.cm-line`) 배경이라 이 패딩 **안쪽**까지만 늘어난다.
+     *   디자인 원본에서도 코드블록은 본문 여백(20px) 안의 자식이다(94~97행).
+     */
     '.cm-content': {
-      padding: '0',
+      paddingTop: 'var(--note-body-pad-y)',
+      paddingBottom: 'var(--note-body-pad-bottom)',
+      paddingLeft: 'var(--note-body-pad-x)',
+      paddingRight: 'calc(var(--note-body-pad-x) - var(--scrollbar-w))',
       // 이 선언은 **무력하다.** drawSelection() 이 Prec.highest 로
       // `.cm-content { caret-color: transparent !important }` 를 깔기 때문이다
       // (@codemirror/view 6.43.6 · dist/index.js:9592 hideNativeSelection).
       // 즉 화면의 캐럿은 전적으로 아래 `.cm-cursor` div 하나에 달려 있다.
       // 그래도 남겨 둔다 — drawSelection() 을 빼는 날 네이티브 캐럿 색이 필요하다.
       caretColor: 'var(--ink)',
-      // 종이 여백은 NoteWindow가 --note-body-pad-* 로 이미 준다.
     },
 
     /* ── 줄 ──────────────────────────────────────────────────
      * 기본 테마는 `.cm-line { padding: 0 2px 0 6px }` (dist/index.js:6844).
-     * 종이 여백은 `.note-body` 가 --note-body-pad-x 로 이미 주므로 그 6px 는
+     * 종이 여백은 위 `.cm-content` 가 --note-body-pad-x 로 이미 주므로 그 6px 는
      * 필요 없다 — **다만 0 으로 만들면 줄 맨 앞의 캐럿이 잘린다.**
      *
      * 확정된 경위 (@codemirror/view 6.43.6):
@@ -125,6 +146,13 @@ export const noteEditorTheme = EditorView.theme(
      *
      * 그래서 **깎이던 절반만큼만** 왼쪽에 돌려준다. 0.75px 라 본문 시작 위치는
      * 눈으로 구분되지 않고(20px → 20.75px), 캐럿은 경계를 가운데 둔 채 온전히 그려진다.
+     *
+     * 추가 (2026-07-26, 본문 여백을 `.cm-content` 로 옮긴 뒤) — 위 1번 전제
+     * (`.cm-content{padding:0}`)가 더 이상 성립하지 않으므로 줄 첫 글자는 이미
+     * 스크롤러 경계에서 20px 안쪽에 있고, 잘림도 일어나지 않는다. 이 0.75px 는
+     * 그래도 남긴다: 누군가 `.cm-content` 의 좌측 패딩을 다시 0 으로 되돌리는
+     * 순간 잘림이 되살아나는데, 그때 이 규칙이 없으면 원인을 다시 찾아야 한다.
+     * 0.75px 는 어느 쪽이든 눈에 보이지 않는다.
      *
      * 주의 — 이 규칙은 style-mod 가 테마 클래스를 앞에 붙여 `.ͼo .cm-line`(명시도
      * 0,2,0)이 된다. 코드블록의 안쪽 여백을 살리려면 editor.css 쪽도 같은 명시도로

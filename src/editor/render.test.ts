@@ -6,6 +6,8 @@
  * jsdom에 붙여서 한 번 그려 본다.
  */
 
+import { LanguageDescription } from '@codemirror/language'
+import { languages } from '@codemirror/language-data'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -265,5 +267,136 @@ describe('스크롤바', () => {
     const hover = ruleFor('.cm-scroller:hover::-webkit-scrollbar-thumb')
     expect(hover).toContain('border-width:')
     expect(hover.replace(/border-width:/g, '')).not.toContain('width:')
+  })
+})
+
+/**
+ * 코드블록 언어별 신택스 하이라이트.
+ *
+ * `markdown({ codeLanguages: languages })` (editor/index.ts) 가 펜스의 언어 태그에
+ * 맞는 lezer 파서를 붙이고, `codeHighlightStyle` (editor/theme.ts) 이 그 파서가
+ * 내보내는 태그를 `cm-hl-*` 클래스로 바꾼다. 색은 `editor.css` 가 `--code-*`
+ * 토큰으로 준다 (jsdom 은 CSS 를 적용하지 않으므로 여기서는 **클래스**까지 본다 —
+ * 클래스가 틀리면 색도 틀린다).
+ *
+ * ▸ 언어 파서는 **비동기로 로드된다.** `getCodeParser`(@codemirror/lang-markdown
+ *   dist:75)는 `LanguageDescription.support` 가 채워지기 전에는 파싱을 건너뛴다.
+ *   그래서 마운트 **전에** `load()` 를 기다린다. `languages` 배열은 우리 코드와
+ *   같은 인스턴스라 로드 결과가 그대로 공유된다.
+ */
+const LANGUAGE_CASES: Array<{ lang: string; code: string; tokens: Record<string, string> }> = [
+  {
+    lang: 'js',
+    code: 'const x = 1; // 메모\nfunction f(a) { return "s" }',
+    tokens: {
+      const: 'cm-hl-keyword',
+      x: 'cm-hl-variable',
+      '=': 'cm-hl-operator',
+      '1': 'cm-hl-number',
+      '// 메모': 'cm-hl-comment',
+      f: 'cm-hl-function',
+      '"s"': 'cm-hl-string',
+    },
+  },
+  {
+    lang: 'ts',
+    code: 'type T = { a: number }\nexport const g = (x: T): string => x.a',
+    tokens: {
+      type: 'cm-hl-keyword',
+      T: 'cm-hl-type',
+      number: 'cm-hl-type',
+      string: 'cm-hl-type',
+      a: 'cm-hl-variable',
+    },
+  },
+  {
+    lang: 'python',
+    code: '# 메모\nimport os\nclass A:\n    def f(self, n=1):\n        return "s"',
+    tokens: {
+      '# 메모': 'cm-hl-comment',
+      import: 'cm-hl-keyword',
+      A: 'cm-hl-type',
+      f: 'cm-hl-function',
+      self: 'cm-hl-variable',
+      '1': 'cm-hl-number',
+      '"s"': 'cm-hl-string',
+    },
+  },
+  {
+    lang: 'rust',
+    code: '// 메모\nfn main() { let x: u32 = 1; println!("hi"); }',
+    tokens: {
+      '// 메모': 'cm-hl-comment',
+      fn: 'cm-hl-keyword',
+      main: 'cm-hl-function',
+      u32: 'cm-hl-type',
+      '1': 'cm-hl-number',
+      '"hi"': 'cm-hl-string',
+      ';': 'cm-hl-operator',
+    },
+  },
+  {
+    lang: 'json',
+    code: '{ "a": 1, "b": [true, null, "s"] }',
+    tokens: {
+      '"a"': 'cm-hl-variable',
+      '1': 'cm-hl-number',
+      true: 'cm-hl-number',
+      null: 'cm-hl-number',
+      '"s"': 'cm-hl-string',
+      '{': 'cm-hl-operator',
+    },
+  },
+  {
+    lang: 'bash',
+    code: '# 메모\nexport A=1\nif [ -f x ]; then echo "hi"; fi',
+    tokens: {
+      '# 메모': 'cm-hl-comment',
+      export: 'cm-hl-keyword',
+      '1': 'cm-hl-number',
+      if: 'cm-hl-keyword',
+      '"hi"': 'cm-hl-string',
+    },
+  },
+]
+
+describe('코드블록 언어별 하이라이트', () => {
+  /** 코드블록 줄 안에서 `text` 와 정확히 일치하는 첫 토큰의 클래스. */
+  function tokenClass(editor: EditorView, text: string): string | null {
+    for (const line of Array.from(editor.dom.querySelectorAll('.cm-code-line'))) {
+      for (const span of Array.from(line.querySelectorAll('span'))) {
+        if (span.textContent === text) return span.className
+      }
+    }
+    return null
+  }
+
+  for (const { lang, code, tokens } of LANGUAGE_CASES) {
+    it(`${lang} 코드블록의 토큰마다 계열에 맞는 클래스가 붙는다`, async () => {
+      const desc = LanguageDescription.matchLanguageName(languages, lang, true)
+      expect(desc, `${lang} 언어를 language-data 에서 못 찾았다`).toBeTruthy()
+      await desc!.load()
+
+      const editor = mount('```' + lang + '\n' + code + '\n```')
+
+      for (const [text, expected] of Object.entries(tokens)) {
+        expect(tokenClass(editor, text), `${lang}: ${text}`).toBe(expected)
+      }
+    })
+  }
+
+  it('위 케이스가 여덟 계열을 전부 덮는다', () => {
+    // 한 계열이라도 실측 없이 늘어나면 "색은 있는데 아무도 안 쓰는" 상태가 된다.
+    const covered = new Set(LANGUAGE_CASES.flatMap((c) => Object.values(c.tokens)))
+    expect([...covered].sort()).toEqual([
+      'cm-hl-comment',
+      'cm-hl-function',
+      'cm-hl-keyword',
+      'cm-hl-number',
+      'cm-hl-operator',
+      'cm-hl-string',
+      'cm-hl-type',
+      'cm-hl-variable',
+    ])
   })
 })

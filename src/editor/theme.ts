@@ -178,32 +178,62 @@ export const noteEditorTheme = EditorView.theme(
 /**
  * 코드블록 안의 언어별 하이라이트.
  *
- * 토큰이 `--code-fg` / `--code-keyword` 두 개뿐이므로 색을 새로 만들지 않고
- * 클래스만 부여한다. 실제 색은 `editor.css`에서 토큰으로 지정한다.
- * (디자인 94~97행: 본문 `#d8d2c8`, 키워드 `#c8a2ff`)
+ * `markdown({ codeLanguages: languages })` (editor/index.ts) 가 `@codemirror/language-data`
+ * 를 물려 놓았으므로, 펜스의 언어 태그(```` ```ts ````)에 맞는 lezer 파서가 붙고
+ * 그 파서가 내보내는 `@lezer/highlight` 태그를 여기서 클래스로 바꾼다.
+ * 실제 색은 `editor.css` 가 `--code-*` 토큰으로 지정한다 — 여기에 색을 쓰지 않는다.
+ *
+ * ▸ **디자인에 없는 의도적 확장이다.** 디자인 원본(94~97행)이 정한 코드블록 색은
+ *   배경 `#2a2521` · 본문 `#d8d2c8` · 키워드 `#c8a2ff` 셋뿐이고, 그 톤(어두운 웜 배경
+ *   + 보라 키워드)에 맞춰 8계열로 넓혔다. 색의 근거·대비 계산은 `tokens.css` 의
+ *   "코드 블록" 절에 적어 두었다. 사용자 요청 "코드블럭 스타일 언어별로 적용해줘"
+ *   (2026-07-26).
+ *
+ * ▸ **상위 태그 하나로 하위 태그가 전부 걸린다.** `@lezer/highlight` 의 태그는
+ *   부모를 갖고(`lineComment = t(comment)`), 스타일 탐색은 태그의 `set`(자기 →
+ *   부모 순)을 훑는다. 그래서 `comment` 하나면 line/block/docComment 가 같이 잡히고,
+ *   더 구체적인 태그에 규칙을 주면 그쪽이 이긴다 — 아래 `atom`/`null` 이 그 경우다
+ *   (둘 다 `keyword` 의 자식이지만 상수 색으로 뽑아낸다).
+ *
+ * ▸ 주의: `bracket` 은 `punctuation` 의 자식이 **아니다.** 둘 다 적어야 한다.
  */
 export const codeHighlightStyle = HighlightStyle.define([
+  // ── 키워드 (if/for/class/import/self …) — 디자인이 정한 유일한 신택스 색
   { tag: tags.keyword, class: 'cm-hl-keyword' },
-  { tag: tags.controlKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.moduleKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.definitionKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.operatorKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.self, class: 'cm-hl-keyword' },
-  { tag: tags.atom, class: 'cm-hl-keyword' },
-  { tag: tags.bool, class: 'cm-hl-keyword' },
-  { tag: tags.null, class: 'cm-hl-keyword' },
-  { tag: tags.function(tags.variableName), class: 'cm-hl-keyword' },
-  { tag: tags.function(tags.propertyName), class: 'cm-hl-keyword' },
-  { tag: tags.typeName, class: 'cm-hl-keyword' },
-  { tag: tags.className, class: 'cm-hl-keyword' },
-  { tag: tags.tagName, class: 'cm-hl-keyword' },
 
-  { tag: tags.comment, class: 'cm-hl-comment' },
-  { tag: tags.lineComment, class: 'cm-hl-comment' },
-  { tag: tags.blockComment, class: 'cm-hl-comment' },
+  // ── 타입 · 클래스 · 네임스페이스 · HTML 태그명
+  //    typeName 이 tagName 의 부모, name 은 className/namespace 의 부모다.
+  { tag: tags.typeName, class: 'cm-hl-type' },
+  { tag: tags.className, class: 'cm-hl-type' },
+  { tag: tags.namespace, class: 'cm-hl-type' },
 
+  // ── 함수 · 매크로. `function(...)` 은 수식자라 정의·호출 양쪽에 붙는다.
+  { tag: tags.function(tags.variableName), class: 'cm-hl-function' },
+  { tag: tags.function(tags.propertyName), class: 'cm-hl-function' },
+  { tag: tags.macroName, class: 'cm-hl-function' },
+
+  // ── 변수 · 속성 · 속성명 · 라벨 (propertyName 이 attributeName 의 부모)
+  { tag: tags.variableName, class: 'cm-hl-variable' },
+  { tag: tags.propertyName, class: 'cm-hl-variable' },
+  { tag: tags.labelName, class: 'cm-hl-variable' },
+
+  // ── 문자열 (docString · character · attributeValue 가 string 의 자식)
   { tag: tags.string, class: 'cm-hl-string' },
-  { tag: tags.special(tags.string), class: 'cm-hl-string' },
-  { tag: tags.number, class: 'cm-hl-string' },
   { tag: tags.regexp, class: 'cm-hl-string' },
+
+  // ── 숫자 · 상수 (integer/float 는 number 의 자식)
+  { tag: tags.number, class: 'cm-hl-number' },
+  { tag: tags.bool, class: 'cm-hl-number' },
+  { tag: tags.null, class: 'cm-hl-number' },
+  { tag: tags.atom, class: 'cm-hl-number' },
+  { tag: tags.escape, class: 'cm-hl-number' },
+
+  // ── 주석 · 메타(#!/셔뱅, 데코레이터, 어트리뷰트)
+  { tag: tags.comment, class: 'cm-hl-comment' },
+  { tag: tags.meta, class: 'cm-hl-comment' },
+
+  // ── 연산자 · 구두점 · 괄호
+  { tag: tags.operator, class: 'cm-hl-operator' },
+  { tag: tags.punctuation, class: 'cm-hl-operator' },
+  { tag: tags.bracket, class: 'cm-hl-operator' },
 ])

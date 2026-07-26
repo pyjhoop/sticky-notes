@@ -122,19 +122,45 @@
   border-bottom-right-radius: var(--radius-code);
 }
 
-/* 언어별 하이라이트 — 코드블록 안에서만 적용된다 */
+/* ── 언어별 하이라이트 ────────────────────────────────────
+ * 클래스는 `src/editor/theme.ts` 의 `codeHighlightStyle` 이 lezer 태그에서 만든다.
+ * 색은 tokens.css 의 --code-* — 대비 계산과 확장 근거는 거기 "코드 블록" 절.
+ *
+ * **코드블록 안에서만** 적용한다. `syntaxHighlighting` 은 문서 전체에 클래스를
+ * 붙이므로(마크다운 이스케이프가 `cm-hl-string` 을 받는 식) 종이 본문까지 물들지
+ * 않도록 `.cm-code-line` 자손으로 가둔다. 본문의 마크다운 표현은 `.cm-strong`
+ * `.cm-inline-code` 같은 우리 데코레이션이 따로 책임진다.
+ */
 .cm-code-line .cm-hl-keyword {
   color: var(--code-keyword);
 }
 
+.cm-code-line .cm-hl-type {
+  color: var(--code-type);
+}
+
+.cm-code-line .cm-hl-function {
+  color: var(--code-function);
+}
+
+.cm-code-line .cm-hl-variable {
+  color: var(--code-variable);
+}
+
 .cm-code-line .cm-hl-string {
-  color: var(--code-fg);
-  opacity: 0.85;
+  color: var(--code-string);
+}
+
+.cm-code-line .cm-hl-number {
+  color: var(--code-number);
+}
+
+.cm-code-line .cm-hl-operator {
+  color: var(--code-operator);
 }
 
 .cm-code-line .cm-hl-comment {
-  color: var(--code-fg);
-  opacity: 0.5;
+  color: var(--code-comment);
   font-style: italic;
 }
 

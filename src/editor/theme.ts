@@ -33,7 +33,71 @@ export const noteEditorTheme = EditorView.theme(
       lineHeight: 'var(--lh-body)',
       overflowY: 'auto',
       overflowX: 'hidden',
+      // 스크롤바 폭을 **항상** 예약한다. 내용이 넘치는 순간 본문이 밀리는 것을
+      // 막는 유일한 방법이다 (M1 DoD "레이아웃 시프트 없이"와 같은 기준).
+      // 예약 폭 = 아래 ::-webkit-scrollbar 의 width 와 같다.
+      scrollbarGutter: 'stable',
     },
+
+    /* ── 스크롤바 ────────────────────────────────────────────
+     * 디자인 원본에 스크롤바 그림은 없다. 기준은 Windows 11 스티커 메모 —
+     * 트랙은 보이지 않고 썸만 가늘게, 포인터가 올라오면 굵고 진해진다.
+     * WebView2(Chromium 150) 기본값은 폭 15px + 회색 트랙 + 화살표 버튼이라
+     * 종이 위에서 지나치게 크다.
+     *
+     * ▸ 왜 `::-webkit-scrollbar` 인가 (표준 `scrollbar-width`/`scrollbar-color` 가 아니라)
+     *   · 표준 쪽은 폭이 `auto|thin|none` 셋뿐이라 치수를 정할 수 없고,
+     *     라운드(알약 썸)도 유휴↔호버 굵기 변화도 표현할 수 없다.
+     *   · 한 엘리먼트에 둘을 함께 쓰면 **Chromium 은 표준 속성을 채택하고
+     *     ::-webkit-scrollbar 규칙 전체를 무시한다.** 그래서 이 저장소에서는
+     *     `scrollbar-width`/`scrollbar-color` 를 **어디에도 쓰지 않는다**
+     *     (render.test.ts 가 회귀를 막는다).
+     *
+     * ▸ 왜 `editor.css` 가 아니라 여기인가
+     *   · `.cm-scroller` 는 CodeMirror 가 만드는 엘리먼트다 — 이 파일의 담당 범위
+     *     ("여기에는 CodeMirror 구조에 걸리는 것만 둔다", 파일 머리말).
+     *   · style-mod 는 <style> 을 head.firstChild **앞**에 넣으므로 일반 CSS 가
+     *     문서 순서상 뒤라 명시도가 같으면 이긴다. 즉 editor.css 에 둬도 적용은
+     *     되지만, 테마 클래스가 붙는 이 경로가 DOM 구조 변화에 더 안전하고
+     *     `render.test.ts` 의 `injectedCss()` 로 주입 여부를 검증할 수 있다.
+     *
+     * ▸ 레이아웃 시프트 0
+     *   · 트랙 폭(--scrollbar-w)은 유휴·호버가 **같다.** 썸 굵기는 투명 border 로만
+     *     바뀌므로 문서 폭에 영향이 없다.
+     *   · 위 `scrollbar-gutter: stable` 이 스크롤바가 생기는 순간의 시프트를 막는다.
+     *
+     * ▸ 색은 --on-paper-* 알파 잉크다. 종이색이 5종이라 불투명 회색을 쓰면
+     *   어떤 색 위에서는 뜨고 어떤 색 위에서는 묻는다. 알파는 5색 전부에서 성립한다.
+     *
+     * ▸ **미결 — 치수 토큰이 없다.** `--scrollbar-w` / `--scrollbar-thumb-w` /
+     *   `--scrollbar-thumb-w-hover` 는 tokens.css(계약 파일)에 아직 없다. 임의로
+     *   추가할 수 없어 폴백 값으로 동작시켜 두었다. 리더가 토큰을 추가하면
+     *   폴백은 자동으로 무시된다. 폴백 값의 근거: 8px = Chromium 기본 15px 의 약 절반,
+     *   4px/6px = 그 안에서 유휴/호버 썸.
+     */
+    '.cm-scroller::-webkit-scrollbar': {
+      width: 'var(--scrollbar-w, 8px)',
+      height: 'var(--scrollbar-w, 8px)',
+    },
+    '.cm-scroller::-webkit-scrollbar-track, .cm-scroller::-webkit-scrollbar-corner': {
+      background: 'transparent',
+    },
+    // 화살표 버튼 — Windows 11 스크롤바에는 없다.
+    '.cm-scroller::-webkit-scrollbar-button': { display: 'none' },
+    '.cm-scroller::-webkit-scrollbar-thumb': {
+      backgroundColor: 'var(--on-paper-ghost)',
+      // 투명 border + padding-box 로 트랙 안에서 썸만 가늘게 그린다.
+      backgroundClip: 'padding-box',
+      border: 'calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w, 4px)) / 2) solid transparent',
+      borderRadius: 'var(--radius-pill)',
+    },
+    /* 포인터가 본문 위에 있거나(=스크롤할 참) 썸을 직접 잡았을 때만 또렷해진다.
+       CSS 로는 "스크롤 중"을 알 수 없어 :active(드래그)까지가 한계다. */
+    '.cm-scroller:hover::-webkit-scrollbar-thumb, .cm-scroller::-webkit-scrollbar-thumb:hover, .cm-scroller::-webkit-scrollbar-thumb:active':
+      {
+        backgroundColor: 'var(--on-paper-mid)',
+        borderWidth: 'calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w-hover, 6px)) / 2)',
+      },
 
     '.cm-content': {
       padding: '0',

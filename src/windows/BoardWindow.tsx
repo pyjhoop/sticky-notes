@@ -40,6 +40,15 @@ export function parseSearch(raw: string): { mode: SearchMode; term: string } {
   return { mode: 'text', term: s }
 }
 
+/** 팔레트의 `name`은 내부 식별자다. 사용자에게 보이는 문자열은 한국어여야 한다 (CLAUDE.md 절대규칙 6). */
+const COLOR_LABEL: Record<ColorIndex, string> = {
+  0: '노랑',
+  1: '분홍',
+  2: '파랑',
+  3: '초록',
+  4: '보라',
+}
+
 interface ContextMenu {
   x: number
   y: number
@@ -177,8 +186,8 @@ export default function BoardWindow() {
               className="board__chip"
               style={{ background: `var(${p.paperVar})` }}
               aria-pressed={colors.includes(p.index)}
-              aria-label={`${p.name} 색 필터`}
-              title={`${p.name} 색 필터`}
+              aria-label={`${COLOR_LABEL[p.index]} 색 필터`}
+              title={`${COLOR_LABEL[p.index]} 색 필터`}
               onClick={() => toggleColor(p.index)}
             />
           ))}

@@ -93,9 +93,9 @@ body:not([data-backdrop]) .dark-window {
   background: var(--dark-hover);
 }
 
+/* design line 162(보드) · 214(설정): hover에서 배경만 바뀌고 글자색은 --dark-text-btn 유지 */
 .titlebar__btn--close:hover {
   background: var(--red-close);
-  color: #fff;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -134,7 +134,7 @@ body:not([data-backdrop]) .dark-window {
 }
 
 .toggle[data-on='true'] .toggle__knob {
-  background: #fff;
+  background: var(--dark-knob-on);
 }
 
 /* ═══════════════════════════════════════════════════════════

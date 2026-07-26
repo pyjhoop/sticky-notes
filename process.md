@@ -13,7 +13,7 @@
 | 문서 3종 + 디자인 사본 | — | ✅ 완료 | — | 2026-07-26 |
 | **M0** 스캐폴드·계약·스파이크 | — | ✅ 완료 (검증 PASS) | `main` | 2026-07-26 |
 | **CI** main 푸시 → 빌드 + 태그 릴리스 | — | ✅ 완료 — `v0.1.2` 릴리스 확인 | `main` | 2026-07-26 |
-| M2 백엔드 | A | 🔵 검증 PASS → 통합 결함 2건 수정 중 | `track/a-backend` | 2026-07-26 |
+| M2 백엔드 | A | ✅ **완료 — 검증 PASS, main 병합** | `track/a-backend` | 2026-07-26 |
 | M3 에디터 | B | ✅ **완료 — 검증 PASS, main 병합** | `track/b-editor` | 2026-07-26 |
 | M1·M4 메모 창 | C | 🔵 구현 중 | `track/c-note-window` | 2026-07-26 |
 | M5·M6 보드/설정 | D | ✅ **완료 — 검증 PASS, main 병합** | `track/d-board-settings` | 2026-07-26 |
@@ -423,6 +423,17 @@ git merge track/b-editor
 5. 계약 파일이 바뀌었다면 눈에 띄게 적는다
 
 다음 리더 세션은 진행 표만 보고 이어받을 수 있어야 한다.
+
+### 통합 게이트 처리 목록
+
+> 트랙 검증 과정에서 발견됐지만 **단일 트랙의 FAIL 사유가 아닌** 것들. 통합 게이트에서 리더가 처리한다.
+
+| # | 항목 | 근거 |
+|---|---|---|
+| 1 | **`ipc.ts`의 `withFallback` 21곳 제거** | 백엔드 미완 시절의 더미 반환. 트랙 A 병합으로 실데이터가 흐르므로 제거해야 한다. `withFallback` grep → 0이 되어야 함. **계약 파일 수정이므로 리더가 한다** |
+| 2 | **단축키 재바인딩이 재시작 후 사라진다 — 계약 공백** | `set_shortcut`이 `db::set_setting`으로 쓰지만 **읽는 경로가 없다.** `Settings` 구조체에 단축키 필드가 없고 임의 키를 읽는 커맨드도 없어 `shortcuts::init`이 항상 기본값을 등록한다. `Settings`에 필드 추가 또는 `get_setting(key)` 커맨드 신설 필요 (계약 변경) |
+| 3 | **탭 들여쓰기 펜스에서 Rust/TS 규칙 불일치** (M2부터 존재, 이번 회귀 아님) | `notes.rs`의 `fence_info`가 들여쓰기를 `line.len() - trim_start().len()`으로 재는데 `trim_start()`가 탭도 걷어내 탭 1개를 "3칸 이하"로 인정한다. 프론트 `FENCE_OPEN_RE`는 스페이스만 허용(CommonMark 기준으로 프론트가 옳다). 불일치 입력: `"\t```\n#진짜태그"`, `"```\n#코드안\n\t```\n#바깥태그"`, `"\t~~~\n#태그티엘"` |
+| 4 | `markdown.ts`의 `deriveTitle`/`derivePreview`가 데드코드 | 현재 호출처 0건이라 무해하나, 나중에 연결하면 Rust와 불일치가 화면에 뜬다. `derivePreview` 기본 `maxLength=120` vs Rust `PREVIEW_MAX_CHARS=160`도 어긋나 있다 |
 
 ### 🟡 누적 사람 확인 항목
 

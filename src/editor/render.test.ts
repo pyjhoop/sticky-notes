@@ -131,15 +131,15 @@ describe('EditorView 렌더', () => {
 })
 
 /**
- * 커서(캐럿)와 현재 줄.
+ * 커서(캐럿).
  *
- * 사용자 신고 재발분 — "메모에 커서가 없어서 어느 라인인지, 입력 받을 준비가 됐는지
- * 모르겠다". 캐럿은 `drawSelection()` 이 그리는 `.cm-cursor` div 하나뿐이고
- * 그것은 `.cm-focused` 안에서만 보인다. jsdom 에는 레이아웃이 없어서 실제 캐럿
- * 사각형(`RectangleMarker`)은 그려지지 않으므로, 여기서는 **캐럿과 현재 줄이
- * 나오기 위한 구조와 CSS 규칙이 살아 있는지**를 지킨다.
+ * 사용자 신고 재발분 — "메모에 커서가 없어서 입력 받을 준비가 됐는지 모르겠다".
+ * 캐럿은 `drawSelection()` 이 그리는 `.cm-cursor` div 하나뿐이고 그것은
+ * `.cm-focused` 안에서만 보인다. jsdom 에는 레이아웃이 없어서 실제 캐럿 사각형
+ * (`RectangleMarker`)은 그려지지 않으므로, 여기서는 **캐럿이 나오기 위한 구조와
+ * CSS 규칙이 살아 있는지**를 지킨다.
  */
-describe('캐럿 · 현재 줄', () => {
+describe('캐럿', () => {
   it('drawSelection 의 커서 레이어가 스크롤러 직계 자식으로 붙는다', () => {
     const editor = mount('한 줄')
     const layer = editor.dom.querySelector('.cm-cursorLayer')
@@ -150,44 +150,7 @@ describe('캐럿 · 현재 줄', () => {
     expect(editor.scrollDOM.parentElement).toBe(editor.dom)
   })
 
-  it('커서가 있는 줄에만 cm-activeLine 이 붙는다', () => {
-    const editor = mount('첫 줄\n둘째 줄\n셋째 줄')
-    const secondLine = editor.state.doc.line(2)
-    editor.dispatch({ selection: EditorSelection.cursor(secondLine.from + 1) })
-
-    const lines = Array.from(editor.dom.querySelectorAll('.cm-line'))
-    const active = lines.filter((el) => el.classList.contains('cm-activeLine'))
-    expect(active).toHaveLength(1)
-    expect(active[0]).toBe(lines[1])
-  })
-
-  it('커서를 옮기면 현재 줄 표시도 따라간다', () => {
-    const editor = mount('첫 줄\n둘째 줄\n셋째 줄')
-    const activeIndex = () =>
-      Array.from(editor.dom.querySelectorAll('.cm-line')).findIndex((el) =>
-        el.classList.contains('cm-activeLine'),
-      )
-
-    editor.dispatch({ selection: EditorSelection.cursor(0) })
-    expect(activeIndex()).toBe(0)
-
-    editor.dispatch({ selection: EditorSelection.cursor(editor.state.doc.line(3).from) })
-    expect(activeIndex()).toBe(2)
-  })
-
-  it('코드블록 줄에서는 cm-activeLine 과 cm-code-line 이 함께 붙는다', () => {
-    // 겹치면 CSS `:not(.cm-code-line)` 로 걸러낼 수 있어야 한다 —
-    // 코드블록은 이미 어두운 배경이라 강조가 겹치면 지저분해진다.
-    const editor = mount('```js\nlet a = 1\n```')
-    const inside = editor.state.doc.line(2)
-    editor.dispatch({ selection: EditorSelection.cursor(inside.from + 1) })
-
-    const active = editor.dom.querySelector('.cm-activeLine')
-    expect(active).not.toBeNull()
-    expect(active!.classList.contains('cm-code-line')).toBe(true)
-  })
-
-  it('테마가 캐럿·현재 줄 규칙을 실제로 주입한다', () => {
+  it('테마가 캐럿 규칙을 실제로 주입한다', () => {
     mount('한 줄')
     const css = injectedCss()
 
@@ -198,14 +161,6 @@ describe('캐럿 · 현재 줄', () => {
     // 깜빡임 — 기본 테마는 `animation` 단축 속성이라 롱핸드는 우리 것뿐이다.
     // (`@keyframes cm-blink` 는 기본 테마가 정의하므로 단언하지 않는다 — 늘 통과한다)
     expect(css).toContain('animation-name: cm-blink')
-
-    // 현재 줄: 코드블록은 제외, 색은 tokens.css 변수만
-    expect(css).toContain('.cm-line.cm-activeLine:not(.cm-code-line)')
-    expect(css).toContain('background-color: var(--active-line-bg)')
-    expect(css).toContain('background-color: var(--active-line-bg-focused)')
-    // 코드블록 줄의 어두운 배경은 강조가 지워 버리면 안 된다
-    expect(css).toContain('.cm-line.cm-activeLine.cm-code-line')
-    expect(css).toContain('background-color: var(--code-bg)')
   })
 
   /**
@@ -242,8 +197,21 @@ describe('캐럿 · 현재 줄', () => {
     editor.contentDOM.blur()
     await new Promise((r) => setTimeout(r, 30))
     expect(editor.dom.classList.contains('cm-focused')).toBe(false)
-    // 그래도 현재 줄 표시는 남는다 (위치는 계속 보인다).
-    expect(editor.dom.querySelector('.cm-activeLine')).not.toBeNull()
+  })
+
+  /**
+   * 현재 줄 강조는 **없다** (사용자 요청, 2026-07-26).
+   * `cm-activeLine` 클래스를 붙이는 곳은 `highlightActiveLine()` 하나뿐이므로
+   * (@codemirror/view 6.43.6 · dist/index.js:10008) 확장을 빼면 클래스 자체가
+   * 생기지 않는다 — 기본 테마의 하늘색 규칙(dist:6923)도 매칭될 대상이 없다.
+   * 그래서 그것을 끄는 CSS 를 따로 두지 않는다.
+   */
+  it('현재 줄 강조를 넣지 않는다', () => {
+    const editor = mount('첫 줄\n둘째 줄\n셋째 줄')
+    editor.dispatch({ selection: EditorSelection.cursor(editor.state.doc.line(2).from + 1) })
+
+    expect(editor.dom.querySelector('.cm-activeLine')).toBeNull()
+    expect(injectedCss()).not.toContain('cm-activeLine')
   })
 })
 

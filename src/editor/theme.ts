@@ -166,29 +166,11 @@ export const noteEditorTheme = EditorView.theme(
 
     '.cm-placeholder': { color: 'var(--on-paper-ghost)' },
 
-    /* ── 현재 줄 ─────────────────────────────────────────────
-     * `highlightActiveLine()` (editor/index.ts) 이 붙이는 클래스다.
-     *
-     * 왜 필요한가: 캐럿은 `.cm-focused` 안에서만 그려진다. 그런데 이 앱의 메모는
-     * 항상 위에 떠 있어서 **다른 앱을 쓰는 동안 창이 OS 포커스를 잃는 시간이 훨씬 길다.**
-     * 그때 캐럿이 사라지는 건 정상 동작이지만, 화면에 위치를 알려주는 게 아무것도 남지
-     * 않으면 "커서가 없다" 로 읽힌다. 줄 강조는 선택 상태에서 나오는 것이라
-     * 포커스와 무관하게 **유지된다** — 그래서 위치는 항상 보이고,
-     * 깜빡이는 캐럿의 유무가 "지금 입력을 받을 수 있는가" 를 가른다.
-     *
-     * 코드블록 줄은 제외한다 — --code-bg 로 이미 어두워서 겹치면 지저분해진다.
-     */
-    // ① 기본 테마의 하늘색 강조(`&light .cm-activeLine { #cceeff44 }`)를 끈다.
-    '.cm-activeLine': { backgroundColor: 'transparent' },
-    // ② 포커스가 없어도 위치는 남긴다 (옅게).
-    '.cm-line.cm-activeLine:not(.cm-code-line)': { backgroundColor: 'var(--active-line-bg)' },
-    // ③ 포커스가 있으면 한 단계 진하게 — "지금 여기에 입력된다".
-    '&.cm-focused .cm-line.cm-activeLine:not(.cm-code-line)': {
-      backgroundColor: 'var(--active-line-bg-focused)',
-    },
-    // ④ 코드블록 줄은 ①이 배경을 지워 버리므로 --code-bg 를 명시적으로 되돌린다.
-    //    (editor.css 의 `.cm-code-line` 은 명시도 1이라 테마 규칙 ①에 진다)
-    '.cm-line.cm-activeLine.cm-code-line': { backgroundColor: 'var(--code-bg)' },
+    /* 현재 줄 강조는 **없다.** 사용자 요청으로 걷어냈다 (2026-07-26).
+     * `cm-activeLine` 클래스를 붙이는 곳은 `highlightActiveLine()` 하나뿐이고
+     * (@codemirror/view 6.43.6 · dist/index.js:10008), editor/index.ts 에서 그 확장을
+     * 뺐으므로 기본 테마의 하늘색 규칙(`&light .cm-activeLine`, dist:6923)도
+     * **매칭될 엘리먼트가 없다.** 그것을 끄는 규칙을 따로 둘 필요가 없다. */
   },
   { dark: false },
 )

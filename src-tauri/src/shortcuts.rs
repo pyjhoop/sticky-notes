@@ -7,6 +7,15 @@
 //!
 //! 트레이 메뉴와 단축키가 **같은 동작 함수**(`run_action`)를 공유한다.
 //!
+//! ## 영속화
+//!
+//! 재바인딩은 `settings` 테이블에 저장되고(`setting_key`), 다음 실행의 `init`이
+//! `db::load_settings`로 읽어 **저장된 값을 먼저** 등록한다. 등록에 실패하면
+//! 기본값으로 되돌리고 그 사실을 `error`에 남겨 `get_shortcut_failures`가 함께 돌려준다.
+//!
+//! 통합 게이트 전에는 쓰기만 있고 읽는 경로가 없어서 재시작하면 재바인딩이 사라졌다.
+//! 게다가 key가 `shortcut.newNote`(점)라 `put_setting`이 거부해 **저장조차 되지 않았다.**
+//!
 //! **소유: 트랙 C (M4).**
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,21 +70,48 @@ impl ShortcutBinding {
 pub struct ShortcutState(pub Mutex<Vec<ShortcutBinding>>);
 
 pub fn defaults() -> Vec<ShortcutBinding> {
-    vec![
-        ShortcutBinding::new(ShortcutAction::NewNote, DEFAULT_NEW_NOTE),
-        ShortcutBinding::new(ShortcutAction::ShowBoard, DEFAULT_SHOW_BOARD),
-        ShortcutBinding::new(ShortcutAction::ToggleAlwaysOnTop, DEFAULT_TOGGLE_TOP),
-    ]
+    ACTIONS
+        .iter()
+        .map(|&a| ShortcutBinding::new(a, default_accelerator(a)))
+        .collect()
+}
+
+/// 동작의 기본 가속기.
+pub fn default_accelerator(action: ShortcutAction) -> &'static str {
+    match action {
+        ShortcutAction::NewNote => DEFAULT_NEW_NOTE,
+        ShortcutAction::ShowBoard => DEFAULT_SHOW_BOARD,
+        ShortcutAction::ToggleAlwaysOnTop => DEFAULT_TOGGLE_TOP,
+    }
 }
 
 /// `settings` 테이블에 쓸 키 이름.
-fn setting_key(action: ShortcutAction) -> &'static str {
+///
+/// **`db::SETTING_KEYS`·`src/lib/ipc.ts`의 `SHORTCUT_SETTING_KEY`와 글자까지 같아야 한다.**
+/// 예전에는 `shortcut.newNote`처럼 점을 썼는데, `put_setting`이 알 수 없는 key라며
+/// 저장을 거부해서 재바인딩이 **애초에 저장되지도 않았다.**
+pub fn setting_key(action: ShortcutAction) -> &'static str {
     match action {
-        ShortcutAction::NewNote => "shortcut.newNote",
-        ShortcutAction::ShowBoard => "shortcut.showBoard",
-        ShortcutAction::ToggleAlwaysOnTop => "shortcut.toggleAlwaysOnTop",
+        ShortcutAction::NewNote => "shortcutNewNote",
+        ShortcutAction::ShowBoard => "shortcutShowBoard",
+        ShortcutAction::ToggleAlwaysOnTop => "shortcutToggleAlwaysOnTop",
     }
 }
+
+/// 저장된 설정에서 해당 동작의 가속기를 꺼낸다.
+pub fn stored_accelerator(settings: &crate::db::Settings, action: ShortcutAction) -> &str {
+    match action {
+        ShortcutAction::NewNote => &settings.shortcut_new_note,
+        ShortcutAction::ShowBoard => &settings.shortcut_show_board,
+        ShortcutAction::ToggleAlwaysOnTop => &settings.shortcut_toggle_always_on_top,
+    }
+}
+
+pub const ACTIONS: [ShortcutAction; 3] = [
+    ShortcutAction::NewNote,
+    ShortcutAction::ShowBoard,
+    ShortcutAction::ToggleAlwaysOnTop,
+];
 
 // ─────────────────────────────────────────────────────────────
 // 동작 — 트레이 메뉴와 단축키가 공유한다
@@ -107,23 +143,13 @@ pub fn run_action<R: Runtime>(app: &AppHandle<R>, action: ShortcutAction) {
 }
 
 /// 새 메모 — 메모를 만들고 창까지 띄운다.
+///
+/// `new_note_window`가 DB 생성 + 창 생성을 한 번에 한다. 실패는 DB 자체가
+/// 열리지 않은 경우뿐이고, 그때는 띄울 창(=메시지를 보여줄 곳)도 없다.
 pub fn new_note<R: Runtime>(app: &AppHandle<R>) {
     let db = app.state::<crate::db::Db>();
-    match crate::windows::new_note_window(app.clone(), db, None) {
-        Ok(id) => {
-            if let Err(e) = crate::windows::open_note_window(app.clone(), id) {
-                eprintln!("[shortcuts] 새 메모 창 열기 실패: {e}");
-            }
-        }
-        Err(e) => {
-            // TODO(M2): 트랙 A가 `new_note_window`를 채우면 이 경로에 도달하지 않는다.
-            //           그때까지는 DB 없이 창만 띄워 `+` / 트레이 `새 메모`가 동작하게 한다.
-            eprintln!("[shortcuts] new_note_window 미구현 → 임시 id로 창만 연다: {e}");
-            let id = uuid::Uuid::now_v7().to_string();
-            if let Err(e) = crate::windows::ensure_note_window(app, &id) {
-                eprintln!("[shortcuts] 임시 메모 창 생성 실패: {e}");
-            }
-        }
+    if let Err(e) = crate::windows::new_note_window(app.clone(), db, None) {
+        eprintln!("[shortcuts] 새 메모 생성 실패: {e}");
     }
 }
 
@@ -202,26 +228,87 @@ fn unregister_one<R: Runtime>(app: &AppHandle<R>, accelerator: &str) {
     }
 }
 
-/// 앱 setup에서 1회 호출.
+/// 저장된 가속기를 읽는다. DB를 못 읽으면 기본값으로 간다 (앱은 계속 뜬다).
+fn stored_bindings<R: Runtime>(app: &AppHandle<R>) -> Vec<ShortcutBinding> {
+    let settings = match app
+        .state::<crate::db::Db>()
+        .with(|c| crate::db::load_settings(c))
+    {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[shortcuts] 저장된 단축키를 읽지 못해 기본값을 씁니다: {e}");
+            return defaults();
+        }
+    };
+    ACTIONS
+        .iter()
+        .map(|&a| ShortcutBinding::new(a, stored_accelerator(&settings, a)))
+        .collect()
+}
+
+/// 하나를 등록하되, **저장된 값이 안 먹히면 기본값으로 되돌린다.**
 ///
-/// 저장된 바인딩을 읽어 오지는 못한다 — `db::get_settings`가 돌려주는 `Settings`에
-/// 단축키 필드가 없고, 임의 키를 읽는 커맨드도 계약에 없다. **계약 부족 사항으로 보고했다.**
-/// 그때까지는 기본값 3개를 등록한다.
-pub fn init<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
-    let handle = app.handle().clone();
-    let mut bindings = defaults();
-    for binding in bindings.iter_mut() {
-        register_one(&handle, binding);
+/// 되돌렸다는 사실은 `error`에 남는다 — 등록에는 성공했으므로 `registered`는 참이지만
+/// 사용자가 지정한 키가 아니므로 `get_shortcut_failures`가 함께 돌려준다.
+/// 조용히 기본값으로 바뀌어 있으면 사용자는 영문을 모른다.
+fn register_with_fallback<R: Runtime>(app: &AppHandle<R>, binding: &mut ShortcutBinding) {
+    register_one(app, binding);
+    if binding.registered {
+        return;
+    }
+    let default = default_accelerator(binding.action);
+    if binding.accelerator == default {
+        return; // 기본값 자체가 실패했다 — 되돌릴 곳이 없다
     }
 
-    let failed = bindings.iter().filter(|b| !b.registered).count();
-    if failed > 0 {
-        eprintln!("[shortcuts] {failed}개 단축키 등록 실패 — 메모 창 배너로 노출된다");
+    let first = binding.error.clone().unwrap_or_default();
+    let attempted = binding.accelerator.clone();
+    let mut fallback = ShortcutBinding::new(binding.action, default);
+    register_one(app, &mut fallback);
+
+    fallback.error = Some(if fallback.registered {
+        format!("저장된 단축키 '{attempted}'를 쓸 수 없어 기본값 '{default}'로 되돌렸습니다. {first}")
+    } else {
+        format!("저장된 단축키 '{attempted}'도 기본값 '{default}'도 등록하지 못했습니다. {first}")
+    });
+    *binding = fallback;
+}
+
+/// 앱 setup에서 1회 호출. **`db::init` 뒤에 불러야 한다** (저장된 값을 읽는다).
+pub fn init<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = app.handle().clone();
+    let mut bindings = stored_bindings(&handle);
+    for binding in bindings.iter_mut() {
+        register_with_fallback(&handle, binding);
+    }
+
+    let attention = bindings.iter().filter(|b| needs_attention(b)).count();
+    if attention > 0 {
+        eprintln!("[shortcuts] 단축키 {attention}개 확인 필요 — 트레이 툴팁·메모 창 배너로 노출된다");
+        // 메모 창이 하나도 없는 상태로 시작하면 배너를 볼 곳이 없다.
+        // 트레이 툴팁은 창이 없어도 남는다.
+        crate::tray::mark_shortcut_attention(&handle, attention);
     }
 
     let state = app.state::<ShortcutState>();
-    *state.0.lock().unwrap() = bindings;
+    *state.0.lock().map_err(|e| e.to_string())? = bindings;
     Ok(())
+}
+
+/// 사용자에게 알려야 하는 바인딩인가 — 등록 실패 또는 기본값 폴백.
+fn needs_attention(b: &ShortcutBinding) -> bool {
+    !b.registered || b.error.is_some()
+}
+
+/// 확인이 필요한 단축키가 있는가. 시작 시 노출 경로 결정에 쓴다 (`windows::bootstrap`).
+pub fn has_attention<R: Runtime>(app: &AppHandle<R>) -> bool {
+    let Some(state) = app.try_state::<ShortcutState>() else {
+        return false;
+    };
+    let Ok(bindings) = state.0.lock() else {
+        return false;
+    };
+    bindings.iter().any(needs_attention)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -285,17 +372,31 @@ pub fn set_shortcut<R: Runtime>(
         }
     }
 
-    // 영속화 — 트랙 A가 `set_setting`을 채우면 자동으로 저장된다.
-    // TODO(M6): 읽기 경로(`get_settings`에 단축키 필드 또는 임의 키 조회)가 계약에 없다.
+    // 영속화 — `settings.shortcutNewNote` 등으로 저장되고, 다음 실행의
+    // `init`이 `stored_bindings`로 그대로 읽어 등록한다.
     let db = app.state::<crate::db::Db>();
     if let Err(e) = crate::db::set_setting(db, setting_key(action).to_string(), accelerator) {
-        eprintln!("[shortcuts] 단축키 저장 실패(무시): {e}");
+        // 저장에 실패하면 이번 실행에서만 동작하고 재시작 시 사라진다 — 사용자에게 알린다.
+        eprintln!("[shortcuts] 단축키 저장 실패: {e}");
+        let note = format!("단축키를 저장하지 못해 재시작하면 되돌아갑니다: {e}");
+        binding.error = Some(match binding.error.take() {
+            Some(prev) => format!("{prev} / {note}"),
+            None => note,
+        });
+        let mut bindings = state.0.lock().map_err(|e| e.to_string())?;
+        if let Some(slot) = bindings.iter_mut().find(|b| b.action == action) {
+            *slot = binding.clone();
+        }
     }
 
     Ok(binding)
 }
 
-/// 등록에 실패한 단축키만 추린다. 시작 직후 토스트로 노출하는 용도.
+/// 사용자 확인이 필요한 단축키를 추린다. 배너로 노출하는 용도.
+///
+/// 두 가지가 섞여 온다:
+/// - `registered: false` — 등록 자체가 실패했다 (그 단축키는 동작하지 않는다)
+/// - `registered: true` + `error` — 저장된 값이 안 먹혀 **기본값으로 되돌렸다**
 #[tauri::command]
 pub fn get_shortcut_failures(
     state: tauri::State<'_, ShortcutState>,
@@ -305,7 +406,7 @@ pub fn get_shortcut_failures(
         .lock()
         .map_err(|e| e.to_string())?
         .iter()
-        .filter(|b| !b.registered)
+        .filter(|b| needs_attention(b))
         .cloned()
         .collect())
 }
@@ -325,4 +426,95 @@ pub fn set_autostart<R: Runtime>(app: tauri::AppHandle<R>, enabled: bool) -> Cmd
     let r = if enabled { m.enable() } else { m.disable() };
     r.map_err(|e| format!("자동 시작 설정 실패: {e}"))?;
     Ok(enabled)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::{load_settings, open_memory, put_setting, Settings};
+
+    /// 저장 → 재읽기 왕복. 이게 깨지면 재바인딩이 재시작 후 사라진다.
+    #[test]
+    fn shortcut_setting_round_trip() {
+        let conn = open_memory().unwrap();
+
+        // 저장된 값이 없으면 기본값이 나온다
+        let fresh = load_settings(&conn).unwrap();
+        for action in ACTIONS {
+            assert_eq!(stored_accelerator(&fresh, action), default_accelerator(action));
+        }
+
+        // 재바인딩 저장 → 다시 읽으면 같은 값
+        let rebound = [
+            (ShortcutAction::NewNote, "Ctrl+Shift+F9"),
+            (ShortcutAction::ShowBoard, "Ctrl+Shift+F10"),
+            (ShortcutAction::ToggleAlwaysOnTop, "Ctrl+Shift+F11"),
+        ];
+        for (action, accel) in rebound {
+            put_setting(&conn, setting_key(action), accel).unwrap();
+        }
+        let stored = load_settings(&conn).unwrap();
+        for (action, accel) in rebound {
+            assert_eq!(stored_accelerator(&stored, action), accel);
+        }
+
+        // 다시 써도 행이 늘지 않는다 (upsert)
+        put_setting(&conn, setting_key(ShortcutAction::NewNote), "Ctrl+Alt+K").unwrap();
+        let n: i64 = conn
+            .query_row("SELECT COUNT(*) FROM settings", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 3);
+        assert_eq!(
+            stored_accelerator(&load_settings(&conn).unwrap(), ShortcutAction::NewNote),
+            "Ctrl+Alt+K"
+        );
+    }
+
+    /// key 이름이 `db::SETTING_KEYS`(=`ipc.ts`의 `keyof Settings`)에 들어 있어야 한다.
+    /// 예전 `shortcut.newNote`는 여기서 걸렸어야 했다.
+    #[test]
+    fn setting_keys_are_known_to_db() {
+        for action in ACTIONS {
+            let key = setting_key(action);
+            assert!(
+                crate::db::SETTING_KEYS.contains(&key),
+                "{key}가 db::SETTING_KEYS에 없다"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_accelerator_is_rejected() {
+        let conn = open_memory().unwrap();
+        assert!(put_setting(&conn, setting_key(ShortcutAction::NewNote), "   ").is_err());
+        assert_eq!(
+            stored_accelerator(&load_settings(&conn).unwrap(), ShortcutAction::NewNote),
+            DEFAULT_NEW_NOTE
+        );
+    }
+
+    /// 폴백 판정 — 등록 실패든 기본값 복귀든 사용자에게 보여야 한다.
+    #[test]
+    fn attention_covers_failure_and_fallback() {
+        let mut ok = ShortcutBinding::new(ShortcutAction::NewNote, DEFAULT_NEW_NOTE);
+        ok.registered = true;
+        assert!(!needs_attention(&ok));
+
+        let mut failed = ok.clone();
+        failed.registered = false;
+        assert!(needs_attention(&failed));
+
+        let mut fell_back = ok.clone();
+        fell_back.error = Some("기본값으로 되돌렸습니다".into());
+        assert!(needs_attention(&fell_back));
+    }
+
+    #[test]
+    fn defaults_match_settings_defaults() {
+        let s = Settings::default();
+        for (b, action) in defaults().iter().zip(ACTIONS) {
+            assert_eq!(b.accelerator, stored_accelerator(&s, action));
+            assert!(!b.registered);
+        }
+    }
 }

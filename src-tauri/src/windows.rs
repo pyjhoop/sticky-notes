@@ -458,13 +458,22 @@ pub fn wake_existing_instance<R: Runtime>(app: &AppHandle<R>) {
 /// 보드/설정은 트레이·단축키로만 열린다 (M4 · 트랙 C).
 pub fn bootstrap<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
-    match restore_open_notes_in(&handle) {
-        Ok(ids) => {
-            if ids.is_empty() {
-                eprintln!("[windows] 복원된 메모 창이 없습니다");
-            }
+    let opened = match restore_open_notes_in(&handle) {
+        Ok(ids) => ids.len(),
+        Err(e) => {
+            eprintln!("[windows] 메모 창 복원 실패: {e}");
+            0
         }
-        Err(e) => eprintln!("[windows] 메모 창 복원 실패: {e}"),
+    };
+
+    // 단축키 경고는 메모 창 배너로 뜬다. 그 창이 하나도 없으면 볼 곳이 없으므로
+    // 설정 창을 열어 준다 — 거기에 실패 목록 배너와 재바인딩 UI가 같이 있다.
+    // (트레이 툴팁에도 남지만 마우스를 올려야 보인다)
+    if opened == 0 && crate::shortcuts::has_attention(&handle) {
+        eprintln!("[windows] 메모 창이 없어 단축키 경고를 설정 창으로 노출합니다");
+        if let Err(e) = show_settings_window(handle.clone()) {
+            eprintln!("[windows] 설정 창 열기 실패: {e}");
+        }
     }
     Ok(())
 }

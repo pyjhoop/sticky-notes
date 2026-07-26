@@ -76,6 +76,21 @@ pub fn init<R: Runtime>(app: &tauri::App<R>) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
+/// 단축키에 확인할 것이 있으면 툴팁에 남긴다.
+///
+/// 메모 창 배너(`NoteWindow`)는 **창이 하나라도 떠 있어야** 보인다. 트레이 아이콘은
+/// 창이 없어도 항상 있으므로, 조용한 무동작을 막는 마지막 노출 경로다.
+pub fn mark_shortcut_attention<R: Runtime>(app: &AppHandle<R>, count: usize) {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        eprintln!("[tray] 트레이 아이콘을 찾지 못해 단축키 경고를 툴팁에 남기지 못했습니다");
+        return;
+    };
+    let text = format!("{TOOLTIP} · 단축키 {count}개 확인 필요 — 설정에서 다시 지정하세요");
+    if let Err(e) = tray.set_tooltip(Some(text)) {
+        eprintln!("[tray] 툴팁 갱신 실패: {e}");
+    }
+}
+
 fn on_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     match event.id().as_ref() {
         ID_NEW_NOTE => run_action(app, ShortcutAction::NewNote),

@@ -202,6 +202,12 @@ pub struct Settings {
     pub export_dir: Option<String>,
     /// 시스템 시작 시 자동 실행
     pub autostart: bool,
+    /// SHORTCUTS — `새 메모`
+    pub shortcut_new_note: String,
+    /// SHORTCUTS — `모든 메모 보기`
+    pub shortcut_show_board: String,
+    /// SHORTCUTS — `항상 위 전환`
+    pub shortcut_toggle_always_on_top: String,
 }
 
 impl Default for Settings {
@@ -214,12 +220,18 @@ impl Default for Settings {
             filename_date_prefix: false,
             export_dir: None,
             autostart: false,
+            shortcut_new_note: crate::shortcuts::DEFAULT_NEW_NOTE.to_string(),
+            shortcut_show_board: crate::shortcuts::DEFAULT_SHOW_BOARD.to_string(),
+            shortcut_toggle_always_on_top: crate::shortcuts::DEFAULT_TOGGLE_TOP.to_string(),
         }
     }
 }
 
 /// `settings` 테이블의 key — `src/lib/ipc.ts`의 `keyof Settings`와 1:1 (camelCase).
-pub const SETTING_KEYS: [&str; 7] = [
+///
+/// 단축키 3개가 여기 있는 이유는 `shortcuts.rs`의 모듈 주석 참조 —
+/// 쓰기만 하고 읽는 경로가 없어 재바인딩이 재시작 때 사라지던 문제를 막는다.
+pub const SETTING_KEYS: [&str; 10] = [
     "alwaysOnTop",
     "autoFade",
     "defaultOpacity",
@@ -227,6 +239,9 @@ pub const SETTING_KEYS: [&str; 7] = [
     "filenameDatePrefix",
     "exportDir",
     "autostart",
+    "shortcutNewNote",
+    "shortcutShowBoard",
+    "shortcutToggleAlwaysOnTop",
 ];
 
 fn parse_bool(key: &str, value: &str) -> Result<bool, String> {
@@ -266,9 +281,27 @@ pub fn apply_setting(s: &mut Settings, key: &str, value: &str) -> Result<(), Str
             };
         }
         "autostart" => s.autostart = parse_bool(key, value)?,
+        "shortcutNewNote" => s.shortcut_new_note = parse_accelerator(key, value)?,
+        "shortcutShowBoard" => s.shortcut_show_board = parse_accelerator(key, value)?,
+        "shortcutToggleAlwaysOnTop" => {
+            s.shortcut_toggle_always_on_top = parse_accelerator(key, value)?
+        }
         other => return Err(format!("알 수 없는 설정 key: {other}")),
     }
     Ok(())
+}
+
+/// 단축키 문자열 — 빈 값만 거른다.
+///
+/// `Ctrl+Alt+N` 형식이 실제로 유효한지는 여기서 판정하지 않는다. 파싱은
+/// `tauri-plugin-global-shortcut`이 하고, 실패하면 `shortcuts::init`이
+/// 기본값으로 되돌리며 그 사실을 `get_shortcut_failures`에 남긴다.
+fn parse_accelerator(key: &str, value: &str) -> Result<String, String> {
+    let v = value.trim();
+    if v.is_empty() {
+        return Err(format!("설정 '{key}'의 단축키가 비어 있습니다"));
+    }
+    Ok(v.to_string())
 }
 
 /// 저장된 key/value를 기본값 위에 병합한다.
@@ -435,6 +468,7 @@ mod tests {
                 "defaultOpacity" => "50",
                 "accent" => "#7a5cd6",
                 "exportDir" => "D:\\vault",
+                _ if k.starts_with("shortcut") => "Ctrl+Alt+J",
                 _ => "true",
             };
             apply_setting(&mut s, k, v).unwrap_or_else(|e| panic!("{k}: {e}"));

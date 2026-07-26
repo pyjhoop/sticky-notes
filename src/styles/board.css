@@ -1,0 +1,384 @@
+/*
+ * 보드 창 (M5) + 보드·설정 공용 다크 크롬 컴포넌트.
+ *
+ * 근거: design/Sticky Notes for Windows.dc.html
+ *   보드 창 line 155-195 / 타이틀바 line 156-164 / 설정 토글 line 222-254
+ *
+ * 색·치수는 전부 tokens.css 참조. 하드코딩 금지 (CLAUDE.md 디자인 토큰 절).
+ * settings.css가 이 파일을 @import 하므로 공용 규칙은 여기 둔다.
+ *
+ * **소유: 트랙 D.**
+ */
+
+/* ═══════════════════════════════════════════════════════════
+ * 공용 — 다크 크롬 창 셸
+ * ═══════════════════════════════════════════════════════════ */
+
+.dark-window {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-window);
+  border: 1px solid var(--dark-border);
+  color: var(--dark-text);
+}
+
+/* mica/acrylic 위에는 디자인의 반투명 다크 크롬을 얹는다.
+   폴백(opaque)일 때만 불투명 — 리사이즈 중 검은 플래시를 막는 마지막 방어선. */
+.dark-window {
+  background: var(--dark-bg);
+}
+
+body[data-backdrop='opaque'] .dark-window,
+body:not([data-backdrop]) .dark-window {
+  background: var(--dark-bg-opaque);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 공용 — TitleBar
+ * ═══════════════════════════════════════════════════════════ */
+
+.titlebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  height: var(--titlebar-h);
+  border-bottom: 1px solid var(--dark-divider);
+}
+
+.titlebar__drag {
+  flex: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-left: 14px;
+  min-width: 0;
+  cursor: default;
+}
+
+.titlebar__title {
+  font-size: var(--fs-meta);
+  color: var(--dark-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.titlebar__title--strong {
+  font-weight: var(--fw-medium);
+}
+
+.titlebar__buttons {
+  display: flex;
+  align-self: stretch;
+}
+
+.titlebar__btn {
+  width: var(--titlebar-btn-w);
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--dark-text-btn);
+  transition: background-color 120ms var(--fade-ease), color 120ms var(--fade-ease);
+}
+
+.titlebar__btn--maximize {
+  font-size: 11px;
+}
+
+.titlebar__btn:hover {
+  background: var(--dark-hover);
+}
+
+/* design line 162(보드) · 214(설정): hover에서 배경만 바뀌고 글자색은 --dark-text-btn 유지 */
+.titlebar__btn--close:hover {
+  background: var(--red-close);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 공용 — Toggle (40×22)
+ * ═══════════════════════════════════════════════════════════ */
+
+.toggle {
+  flex: none;
+  width: var(--toggle-w);
+  height: var(--toggle-h);
+  border-radius: var(--radius-toggle);
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  background: var(--dark-toggle-off);
+  transition: background-color var(--fade-duration) var(--fade-ease);
+}
+
+.toggle[data-on='true'] {
+  justify-content: flex-end;
+  background: var(--accent);
+}
+
+.toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.toggle__knob {
+  width: var(--toggle-knob);
+  height: var(--toggle-knob);
+  border-radius: 50%;
+  background: var(--dark-knob-off);
+  transition: background-color var(--fade-duration) var(--fade-ease);
+}
+
+.toggle[data-on='true'] .toggle__knob {
+  background: var(--dark-knob-on);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 공용 — 다크 크롬 필드 · 버튼
+ * ═══════════════════════════════════════════════════════════ */
+
+.dark-field {
+  flex: 1;
+  min-width: 0;
+  height: var(--field-h);
+  display: flex;
+  align-items: center;
+  padding: 0 11px;
+  border-radius: var(--radius-field);
+  background: var(--dark-field-bg-soft);
+  border: 1px solid var(--dark-border);
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  color: var(--dark-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dark-btn {
+  flex: none;
+  height: var(--field-h);
+  padding: 0 16px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-field);
+  background: var(--dark-btn-bg);
+  border: 1px solid var(--dark-btn-border);
+  font-size: var(--fs-meta);
+  color: var(--dark-text);
+  transition: background-color 120ms var(--fade-ease);
+}
+
+.dark-btn:hover:not(:disabled) {
+  background: var(--dark-btn-bg-hover);
+}
+
+.dark-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 보드 — 툴바 (검색 · 필터 칩 · 상태)
+ * ═══════════════════════════════════════════════════════════ */
+
+.board__toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px var(--board-pad);
+}
+
+.board__search {
+  flex: 1;
+  max-width: 320px;
+  height: var(--search-h);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border-radius: var(--radius-field);
+  background: var(--dark-field-bg);
+  border: 1px solid var(--dark-border);
+}
+
+.board__search-icon {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.5px solid var(--dark-placeholder);
+}
+
+.board__search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: var(--fs-meta);
+  color: var(--dark-text);
+}
+
+.board__search input::placeholder {
+  color: var(--dark-placeholder);
+}
+
+.board__filters {
+  display: flex;
+  gap: 5px;
+}
+
+.board__chip {
+  width: var(--filter-chip);
+  height: var(--filter-chip);
+  border-radius: var(--radius-chip);
+  opacity: 0.4;
+  transition: opacity 120ms var(--fade-ease), box-shadow 120ms var(--fade-ease);
+}
+
+.board__chip[aria-pressed='true'] {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.board__chip:hover {
+  opacity: 0.75;
+}
+
+.board__chip[aria-pressed='true']:hover {
+  opacity: 1;
+}
+
+.board__spacer {
+  flex: 1;
+}
+
+.board__status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-small);
+  color: var(--dark-placeholder);
+  white-space: nowrap;
+}
+
+.board__status-dot {
+  width: var(--status-dot);
+  height: var(--status-dot);
+  border-radius: 50%;
+  background: var(--green-done);
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 보드 — 카드 그리드
+ * ═══════════════════════════════════════════════════════════ */
+
+.board__grid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(var(--board-cols), 1fr);
+  gap: var(--board-gap);
+  align-content: start;
+  padding: 2px var(--board-pad) var(--board-pad);
+}
+
+.board__empty {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--board-pad);
+  font-size: var(--fs-meta);
+  color: var(--dark-text-3);
+}
+
+.board__card {
+  height: var(--card-h);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--card-pad-y) var(--card-pad-x);
+  border-radius: var(--radius-card);
+  color: var(--card-ink);
+  text-align: left;
+  box-shadow: var(--shadow-card);
+  transition: transform 120ms var(--fade-ease), box-shadow 120ms var(--fade-ease);
+}
+
+.board__card:hover {
+  transform: translateY(var(--card-hover-lift));
+}
+
+.board__card-title {
+  font-size: var(--fs-meta);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board__card-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  opacity: 0.66;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.board__card-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-tiny);
+  color: var(--on-paper-faint);
+}
+
+.board__card-dot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+}
+
+/* ═══════════════════════════════════════════════════════════
+ * 보드 — 우클릭 메뉴 (디자인의 트레이 메뉴 스타일 재사용, line 285-292)
+ * ═══════════════════════════════════════════════════════════ */
+
+.board__menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 140px;
+  padding: 5px 0;
+  border-radius: var(--radius-tray);
+  background: var(--dark-bg-tray);
+  border: 1px solid var(--dark-border);
+  box-shadow: var(--shadow-tray);
+}
+
+.board__menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: var(--tray-item-pad-y) var(--tray-item-pad-x);
+  font-size: var(--fs-meta);
+  color: var(--dark-text-menu);
+  text-align: left;
+}
+
+.board__menu button:hover {
+  background: var(--dark-hover);
+}

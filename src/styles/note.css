@@ -5,8 +5,6 @@
  *       "유휴 — 컨트롤 숨김, 종이만 남음"(264~268행).
  *
  * 색·치수는 전부 tokens.css(동결)를 참조한다. 하드코딩 금지.
- * 예외 1건: 닫기 버튼 hover 시의 순백 글자색 — tokens.css에 순백 토큰이 없어
- *          `.note-paper` 스코프의 지역 별칭 `--on-red-close`로 둔다 (아래 주석 참조).
  */
 
 /* ── 창 루트 ─────────────────────────────────────────────
@@ -29,10 +27,6 @@
 }
 
 .note-paper {
-  /* 디자인 55행: 닫기 hover `background:#c42b1c; color:#fff`.
-     tokens.css(동결)에 순백 토큰이 없어 이 파일 스코프의 지역 별칭으로 둔다. */
-  --on-red-close: #fff;
-
   position: relative;
   height: 100%;
   display: flex;
@@ -131,7 +125,7 @@
 
 .note-btn--close:hover {
   background: var(--red-close);
-  color: var(--on-red-close);
+  color: var(--on-accent);
 }
 
 /* ── 투명도 슬라이더 ─────────────────────────────────────── */

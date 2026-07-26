@@ -1,0 +1,113 @@
+/*
+ * 전역 기본 스타일.
+ * 토큰은 `tokens.css`(동결). 이 파일은 리셋과 창 공통 규칙만 담는다.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  height: 100%;
+}
+
+::selection {
+  background: var(--selection-bg);
+}
+
+/* 프레임리스 창 — 텍스트가 아닌 곳의 드래그 선택을 막는다 */
+body {
+  user-select: none;
+  cursor: default;
+}
+
+input,
+textarea,
+[contenteditable='true'],
+.selectable {
+  user-select: text;
+}
+
+/* ── 창별 배경 ───────────────────────────────────────────
+ * 메모 창은 transparent:true — 종이 바깥은 완전 투명해야
+ * drop-shadow가 다른 앱 위에 얹힌다.
+ */
+body[data-window='note'] {
+  background: transparent;
+}
+
+/* 보드·설정은 mica/acrylic. 폴백은 불투명 다크 크롬. */
+body[data-window='board'],
+body[data-window='settings'] {
+  background: var(--dark-bg-opaque);
+  color: var(--dark-text);
+}
+
+body[data-backdrop='mica'],
+body[data-backdrop='acrylic'] {
+  background: transparent;
+}
+
+/* ── 슬라이더 (디자인 <helmet> 스타일 그대로) ─────────────── */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--range-track);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-thumb);
+}
+
+/* 다크 크롬 위의 슬라이더 */
+body[data-window='settings'] input[type='range']::-webkit-slider-runnable-track {
+  background: var(--dark-btn-bg);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ── 모노 섹션 레이블 — OPACITY · DISPLAY · DATA · STATES ── */
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-label);
+  letter-spacing: var(--ls-mono-label);
+  text-transform: uppercase;
+  color: var(--dark-text-3);
+}

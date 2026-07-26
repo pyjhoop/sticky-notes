@@ -43,9 +43,8 @@
 
 .cm-task-checkbox-done::after {
   content: '✓';
-  /* 디자인 74행 color:#fff — tokens.css 에 순백 토큰이 없어 리터럴을 쓴다.
-     TODO: 리더 승인 시 `--check-mark-fg` 토큰으로 옮긴다. */
-  color: #fff;
+  /* 디자인 74행 color:#fff */
+  color: var(--on-accent);
   font-size: 10px;
   line-height: 1;
 }

@@ -7,7 +7,6 @@
  * 전부 `Decoration`(겉모습)만 만든다.
  */
 
-import { syntaxTree } from '@codemirror/language'
 import type { EditorState, Range } from '@codemirror/state'
 import { Decoration } from '@codemirror/view'
 import type { SyntaxNode } from '@lezer/common'
@@ -30,26 +29,6 @@ export function cursorInside(state: EditorState, from: number, to: number): bool
 
 /** 마커 문자를 화면에서만 지운다. 문서에는 그대로 남는다. */
 export const hiddenMarker = Decoration.replace({})
-
-/** 코드로 취급할 노드 — 이 안의 `#태그`·`[[링크]]`는 장식하지 않는다. */
-const CODE_NODES = new Set([
-  'FencedCode',
-  'CodeBlock',
-  'CodeText',
-  'InlineCode',
-  'CodeMark',
-  'CommentBlock',
-  'HTMLBlock',
-])
-
-/** `pos`가 코드(펜스 블록 · 인라인 백틱) 안인가. */
-export function insideCode(state: EditorState, pos: number): boolean {
-  const inner = syntaxTree(state).resolveInner(pos, 1)
-  for (let node: SyntaxNode | null = inner; node; node = node.parent) {
-    if (CODE_NODES.has(node.name)) return true
-  }
-  return false
-}
 
 /** 노드의 직계 자식 중 이름이 일치하는 것들. */
 export function childrenNamed(node: SyntaxNode, name: string): SyntaxNode[] {

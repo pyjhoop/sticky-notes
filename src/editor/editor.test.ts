@@ -128,8 +128,11 @@ describe('마크다운 원문 무손실', () => {
     expect(stateOf(doc).doc.toString()).toBe(doc)
   })
 
-  it('CRLF는 LF로 정규화된다 — CodeMirror Text의 고정 동작', () => {
-    // Text.toString()이 항상 "\n"으로 잇는다. 개행 문자 외의 바이트는 전부 보존된다.
+  it('CRLF는 LF로 정규화된다 — 의도적 정규화', () => {
+    // `EditorState.lineSeparator` facet을 설정하지 않으므로 개행이 LF로 통일된다.
+    // (facet에 '\r\n'을 주면 CRLF 유지도 가능하지만, 혼재 개행은 어차피 왕복 불가라
+    //  SQLite에 LF 정규형으로 저장하는 편이 마크다운 내보내기에 안전하다.)
+    // 개행 문자 외의 바이트는 전부 보존된다.
     expect(stateOf('가\r\n나\r\n').doc.toString()).toBe('가\n나\n')
   })
 

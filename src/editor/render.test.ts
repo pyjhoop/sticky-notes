@@ -34,14 +34,22 @@ function mount(doc: string): EditorView {
  *
  * head 전체를 합치면 CodeMirror 기본 테마까지 섞인다. 그러면
  * `@keyframes cm-blink` 나 `.cm-cursorLayer .cm-cursor` 같은 단언이
- * **우리 코드를 통째로 지워도 통과한다.** 기본 테마는 CSS 변수를 쓰지 않으므로
- * `var(--` 를 담은 시트만 남기면 우리 것만 걸러진다.
+ * **우리 코드를 통째로 지워도 통과한다.**
+ *
+ * 시트 단위로는 못 가른다 — style-mod 는 모든 `StyleModule` 을 `<style>` **하나에**
+ * 몰아 넣는다(기본 테마·drawSelection·우리 테마가 같은 노드에 있다). 대신
+ * style-mod 는 규칙 하나를 한 줄로 쓰고 모듈마다 다른 생성 클래스(`.ͼo` 등)를
+ * 앞에 붙이므로, **CSS 변수를 쓰는 규칙은 우리 것뿐**이라는 점을 지렛대로
+ * 우리 클래스를 알아낸 뒤 그 클래스로 시작하는 줄만 남긴다.
  */
 function injectedCss(): string {
-  return Array.from(document.head.querySelectorAll('style'))
-    .map((el) => el.textContent ?? '')
-    .filter((css) => css.includes('var(--'))
-    .join('\n')
+  const lines = Array.from(document.head.querySelectorAll('style')).flatMap((el) =>
+    (el.textContent ?? '').split('\n'),
+  )
+  const ours = lines.find((line) => line.startsWith('.') && line.includes('var(--'))
+  expect(ours, '우리 테마가 주입되지 않았다').toBeDefined()
+  const themeClass = /^\.[^\s.,{]+/.exec(ours as string)?.[0] as string
+  return lines.filter((line) => line.startsWith(themeClass)).join('\n')
 }
 
 /**
@@ -198,6 +206,27 @@ describe('캐럿 · 현재 줄', () => {
     // 코드블록 줄의 어두운 배경은 강조가 지워 버리면 안 된다
     expect(css).toContain('.cm-line.cm-activeLine.cm-code-line')
     expect(css).toContain('background-color: var(--code-bg)')
+  })
+
+  /**
+   * 줄 맨 앞 캐럿이 잘리는 회귀를 막는다.
+   *
+   * 캐럿 div 는 글자 경계를 **가운데 두고** 걸친다(`margin-left: -캐럿굵기/2`).
+   * 줄 첫 글자의 x 는 `.cm-scroller` 의 좌측 경계와 같으므로, 왼쪽 절반이 음수 x 로
+   * 나가고 `overflow-x: hidden` 이 그걸 잘라낸다 → 맨 앞에서만 캐럿이 반쪽이 된다.
+   * 그래서 잘리던 만큼을 `.cm-line` 왼쪽 여백으로 돌려준다.
+   *
+   * jsdom 에는 레이아웃이 없어 실제 픽셀을 잴 수 없다. 대신 이 세 규칙이
+   * **함께** 성립해야 한다는 관계를 고정한다 — 하나라도 되돌리면 실패한다.
+   */
+  it('줄 맨 앞에서도 캐럿이 잘리지 않도록 .cm-line 이 캐럿 절반을 비워 둔다', () => {
+    mount('한 줄')
+
+    expect(ruleFor('border-left-width: var(--caret-w)')).toContain(
+      'margin-left: calc(var(--caret-w) / -2)',
+    )
+    expect(ruleFor('.cm-scroller {')).toContain('overflow-x: hidden')
+    expect(ruleFor('.cm-line {')).toContain('padding: 0 0 0 calc(var(--caret-w) / 2)')
   })
 
   it('포커스가 들어가면 cm-focused 가 붙고, 빠지면 떨어진다', async () => {

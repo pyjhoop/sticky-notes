@@ -201,6 +201,15 @@
   /* 에디터 캐럿 굵기. CodeMirror 기본값 1.2px 는 종이 위에서 눈에 잘 안 띈다 */
   --caret-w: 1.5px;
 
+  /* 스크롤바 — 디자인 원본에 그림이 없다. 기준은 Windows 11 스티커 메모:
+     트랙은 보이지 않고 썸만 가늘게, 포인터가 올라오면 굵어진다.
+     8px = WebView2(Chromium) 기본 15px 의 약 절반. 유휴 4px → 호버 6px 는 그 안에서
+     투명 border 로만 바뀌므로 트랙 폭은 고정이다(레이아웃 시프트 0).
+     쓰는 곳: src/editor/theme.ts(.cm-scroller) · src/styles/board.css(다크 크롬) */
+  --scrollbar-w: 8px;
+  --scrollbar-thumb-w: 4px;
+  --scrollbar-thumb-w-hover: 6px;
+
   --palette-swatch: 22px;
   --palette-gap: 6px;
   --palette-pad: 8px;

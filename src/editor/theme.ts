@@ -69,15 +69,11 @@ export const noteEditorTheme = EditorView.theme(
      * ▸ 색은 --on-paper-* 알파 잉크다. 종이색이 5종이라 불투명 회색을 쓰면
      *   어떤 색 위에서는 뜨고 어떤 색 위에서는 묻는다. 알파는 5색 전부에서 성립한다.
      *
-     * ▸ **미결 — 치수 토큰이 없다.** `--scrollbar-w` / `--scrollbar-thumb-w` /
-     *   `--scrollbar-thumb-w-hover` 는 tokens.css(계약 파일)에 아직 없다. 임의로
-     *   추가할 수 없어 폴백 값으로 동작시켜 두었다. 리더가 토큰을 추가하면
-     *   폴백은 자동으로 무시된다. 폴백 값의 근거: 8px = Chromium 기본 15px 의 약 절반,
-     *   4px/6px = 그 안에서 유휴/호버 썸.
+     * ▸ 치수는 tokens.css 의 --scrollbar-* 3종이다 (2026-07-26 계약 추가).
      */
     '.cm-scroller::-webkit-scrollbar': {
-      width: 'var(--scrollbar-w, 8px)',
-      height: 'var(--scrollbar-w, 8px)',
+      width: 'var(--scrollbar-w)',
+      height: 'var(--scrollbar-w)',
     },
     '.cm-scroller::-webkit-scrollbar-track, .cm-scroller::-webkit-scrollbar-corner': {
       background: 'transparent',
@@ -88,7 +84,7 @@ export const noteEditorTheme = EditorView.theme(
       backgroundColor: 'var(--on-paper-ghost)',
       // 투명 border + padding-box 로 트랙 안에서 썸만 가늘게 그린다.
       backgroundClip: 'padding-box',
-      border: 'calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w, 4px)) / 2) solid transparent',
+      border: 'calc((var(--scrollbar-w) - var(--scrollbar-thumb-w)) / 2) solid transparent',
       borderRadius: 'var(--radius-pill)',
     },
     /* 포인터가 본문 위에 있거나(=스크롤할 참) 썸을 직접 잡았을 때만 또렷해진다.
@@ -96,7 +92,7 @@ export const noteEditorTheme = EditorView.theme(
     '.cm-scroller:hover::-webkit-scrollbar-thumb, .cm-scroller::-webkit-scrollbar-thumb:hover, .cm-scroller::-webkit-scrollbar-thumb:active':
       {
         backgroundColor: 'var(--on-paper-mid)',
-        borderWidth: 'calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w-hover, 6px)) / 2)',
+        borderWidth: 'calc((var(--scrollbar-w) - var(--scrollbar-thumb-w-hover)) / 2)',
       },
 
     '.cm-content': {
@@ -110,7 +106,28 @@ export const noteEditorTheme = EditorView.theme(
       // 종이 여백은 NoteWindow가 --note-body-pad-* 로 이미 준다.
     },
 
-    '.cm-line': { padding: '0' },
+    /* ── 줄 ──────────────────────────────────────────────────
+     * 기본 테마는 `.cm-line { padding: 0 2px 0 6px }` (dist/index.js:6844).
+     * 종이 여백은 `.note-body` 가 --note-body-pad-x 로 이미 주므로 그 6px 는
+     * 필요 없다 — **다만 0 으로 만들면 줄 맨 앞의 캐럿이 잘린다.**
+     *
+     * 확정된 경위 (@codemirror/view 6.43.6):
+     *   1. 캐럿 div 의 left 는 `pos.left - base.left` 다 (RectangleMarker.forRange,
+     *      dist:9276). base 는 `.cm-scroller` 의 좌측 경계(getBase, dist:9288)이고
+     *      `.cm-content{padding:0}` + `.cm-line{padding-left:0}` 이면 줄 첫 글자의
+     *      pos.left 가 정확히 그 경계와 같다 → left = 0.
+     *   2. 캐럿은 `margin-left: calc(var(--caret-w) / -2)` 로 경계를 **가운데 두고**
+     *      걸친다(기본 테마도 -0.6px 로 같은 방식, dist:6881). 즉 상자가
+     *      x ∈ [-0.75px, +0.75px] 를 차지한다.
+     *   3. `.cm-scroller` 는 `overflow-x: hidden` 이라 스크롤 컨테이너다. LTR 에서
+     *      음수 x 는 스크롤로 닿을 수도 없고 패딩 상자 경계에서 **잘린다.**
+     *      → 줄 맨 앞에서만 캐럿이 절반(0.75px)으로 깎여 사실상 안 보인다.
+     *
+     * 그래서 **깎이던 절반만큼만** 왼쪽에 돌려준다. 0.75px 라 본문 시작 위치는
+     * 눈으로 구분되지 않고(20px → 20.75px), 캐럿은 경계를 가운데 둔 채 온전히 그려진다.
+     * `.cm-code-line`(editor.css)의 padding-left:13px 은 문서 순서상 뒤라 그대로 이긴다.
+     */
+    '.cm-line': { padding: '0 0 0 calc(var(--caret-w) / 2)' },
 
     // 거터 없음 — 메모지에 줄번호는 없다.
     '.cm-gutters': { display: 'none' },

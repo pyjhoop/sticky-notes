@@ -54,14 +54,11 @@ body:not([data-backdrop]) .dark-window {
  * ▸ 레이아웃 시프트 0 — 트랙 폭은 유휴·호버가 같고, 굵기는 썸의 투명 border 로만
  *   바뀐다. scrollbar-gutter:stable 이 스크롤바가 생기는 순간의 시프트도 막는다.
  *
- * ▸ **미결 — 치수 토큰이 없다.** `--scrollbar-w` / `--scrollbar-thumb-w` /
- *   `--scrollbar-thumb-w-hover` 는 tokens.css(계약 파일)에 아직 없다. 임의로 추가할 수
- *   없어 폴백 값으로 동작시켜 두었다. 리더가 토큰을 추가하면 폴백은 자동으로 무시된다.
- *   근거: 8px = Chromium 기본 15px 의 약 절반, 4px/6px = 그 안의 유휴/호버 썸.
+ * ▸ 치수는 tokens.css 의 --scrollbar-* 3종이다 (2026-07-26 계약 추가).
  */
 .dark-window ::-webkit-scrollbar {
-  width: var(--scrollbar-w, 8px);
-  height: var(--scrollbar-w, 8px);
+  width: var(--scrollbar-w);
+  height: var(--scrollbar-w);
 }
 
 .dark-window ::-webkit-scrollbar-track,
@@ -78,8 +75,7 @@ body:not([data-backdrop]) .dark-window {
   background-color: var(--dark-btn-bg);
   /* 투명 border + padding-box 로 트랙 안에서 썸만 가늘게 그린다 */
   background-clip: padding-box;
-  border: calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w, 4px)) / 2) solid
-    transparent;
+  border: calc((var(--scrollbar-w) - var(--scrollbar-thumb-w)) / 2) solid transparent;
   border-radius: var(--radius-pill);
 }
 
@@ -89,7 +85,7 @@ body:not([data-backdrop]) .dark-window {
 .dark-window ::-webkit-scrollbar-thumb:hover,
 .dark-window ::-webkit-scrollbar-thumb:active {
   background-color: var(--dark-btn-bg-hover);
-  border-width: calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w-hover, 6px)) / 2);
+  border-width: calc((var(--scrollbar-w) - var(--scrollbar-thumb-w-hover)) / 2);
 }
 
 /* ═══════════════════════════════════════════════════════════

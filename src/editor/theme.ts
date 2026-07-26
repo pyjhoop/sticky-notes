@@ -69,15 +69,11 @@ export const noteEditorTheme = EditorView.theme(
      * ▸ 색은 --on-paper-* 알파 잉크다. 종이색이 5종이라 불투명 회색을 쓰면
      *   어떤 색 위에서는 뜨고 어떤 색 위에서는 묻는다. 알파는 5색 전부에서 성립한다.
      *
-     * ▸ **미결 — 치수 토큰이 없다.** `--scrollbar-w` / `--scrollbar-thumb-w` /
-     *   `--scrollbar-thumb-w-hover` 는 tokens.css(계약 파일)에 아직 없다. 임의로
-     *   추가할 수 없어 폴백 값으로 동작시켜 두었다. 리더가 토큰을 추가하면
-     *   폴백은 자동으로 무시된다. 폴백 값의 근거: 8px = Chromium 기본 15px 의 약 절반,
-     *   4px/6px = 그 안에서 유휴/호버 썸.
+     * ▸ 치수는 tokens.css 의 --scrollbar-* 3종이다 (2026-07-26 계약 추가).
      */
     '.cm-scroller::-webkit-scrollbar': {
-      width: 'var(--scrollbar-w, 8px)',
-      height: 'var(--scrollbar-w, 8px)',
+      width: 'var(--scrollbar-w)',
+      height: 'var(--scrollbar-w)',
     },
     '.cm-scroller::-webkit-scrollbar-track, .cm-scroller::-webkit-scrollbar-corner': {
       background: 'transparent',
@@ -88,7 +84,7 @@ export const noteEditorTheme = EditorView.theme(
       backgroundColor: 'var(--on-paper-ghost)',
       // 투명 border + padding-box 로 트랙 안에서 썸만 가늘게 그린다.
       backgroundClip: 'padding-box',
-      border: 'calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w, 4px)) / 2) solid transparent',
+      border: 'calc((var(--scrollbar-w) - var(--scrollbar-thumb-w)) / 2) solid transparent',
       borderRadius: 'var(--radius-pill)',
     },
     /* 포인터가 본문 위에 있거나(=스크롤할 참) 썸을 직접 잡았을 때만 또렷해진다.
@@ -96,7 +92,7 @@ export const noteEditorTheme = EditorView.theme(
     '.cm-scroller:hover::-webkit-scrollbar-thumb, .cm-scroller::-webkit-scrollbar-thumb:hover, .cm-scroller::-webkit-scrollbar-thumb:active':
       {
         backgroundColor: 'var(--on-paper-mid)',
-        borderWidth: 'calc((var(--scrollbar-w, 8px) - var(--scrollbar-thumb-w-hover, 6px)) / 2)',
+        borderWidth: 'calc((var(--scrollbar-w) - var(--scrollbar-thumb-w-hover)) / 2)',
       },
 
     '.cm-content': {
@@ -110,7 +106,31 @@ export const noteEditorTheme = EditorView.theme(
       // 종이 여백은 NoteWindow가 --note-body-pad-* 로 이미 준다.
     },
 
-    '.cm-line': { padding: '0' },
+    /* ── 줄 ──────────────────────────────────────────────────
+     * 기본 테마는 `.cm-line { padding: 0 2px 0 6px }` (dist/index.js:6844).
+     * 종이 여백은 `.note-body` 가 --note-body-pad-x 로 이미 주므로 그 6px 는
+     * 필요 없다 — **다만 0 으로 만들면 줄 맨 앞의 캐럿이 잘린다.**
+     *
+     * 확정된 경위 (@codemirror/view 6.43.6):
+     *   1. 캐럿 div 의 left 는 `pos.left - base.left` 다 (RectangleMarker.forRange,
+     *      dist:9276). base 는 `.cm-scroller` 의 좌측 경계(getBase, dist:9288)이고
+     *      `.cm-content{padding:0}` + `.cm-line{padding-left:0}` 이면 줄 첫 글자의
+     *      pos.left 가 정확히 그 경계와 같다 → left = 0.
+     *   2. 캐럿은 `margin-left: calc(var(--caret-w) / -2)` 로 경계를 **가운데 두고**
+     *      걸친다(기본 테마도 -0.6px 로 같은 방식, dist:6881). 즉 상자가
+     *      x ∈ [-0.75px, +0.75px] 를 차지한다.
+     *   3. `.cm-scroller` 는 `overflow-x: hidden` 이라 스크롤 컨테이너다. LTR 에서
+     *      음수 x 는 스크롤로 닿을 수도 없고 패딩 상자 경계에서 **잘린다.**
+     *      → 줄 맨 앞에서만 캐럿이 절반(0.75px)으로 깎여 사실상 안 보인다.
+     *
+     * 그래서 **깎이던 절반만큼만** 왼쪽에 돌려준다. 0.75px 라 본문 시작 위치는
+     * 눈으로 구분되지 않고(20px → 20.75px), 캐럿은 경계를 가운데 둔 채 온전히 그려진다.
+     *
+     * 주의 — 이 규칙은 style-mod 가 테마 클래스를 앞에 붙여 `.ͼo .cm-line`(명시도
+     * 0,2,0)이 된다. 코드블록의 안쪽 여백을 살리려면 editor.css 쪽도 같은 명시도로
+     * 적어야 한다(`.cm-line.cm-code-line`). 거기 주석 참조.
+     */
+    '.cm-line': { padding: '0 0 0 calc(var(--caret-w) / 2)' },
 
     // 거터 없음 — 메모지에 줄번호는 없다.
     '.cm-gutters': { display: 'none' },
@@ -149,29 +169,11 @@ export const noteEditorTheme = EditorView.theme(
 
     '.cm-placeholder': { color: 'var(--on-paper-ghost)' },
 
-    /* ── 현재 줄 ─────────────────────────────────────────────
-     * `highlightActiveLine()` (editor/index.ts) 이 붙이는 클래스다.
-     *
-     * 왜 필요한가: 캐럿은 `.cm-focused` 안에서만 그려진다. 그런데 이 앱의 메모는
-     * 항상 위에 떠 있어서 **다른 앱을 쓰는 동안 창이 OS 포커스를 잃는 시간이 훨씬 길다.**
-     * 그때 캐럿이 사라지는 건 정상 동작이지만, 화면에 위치를 알려주는 게 아무것도 남지
-     * 않으면 "커서가 없다" 로 읽힌다. 줄 강조는 선택 상태에서 나오는 것이라
-     * 포커스와 무관하게 **유지된다** — 그래서 위치는 항상 보이고,
-     * 깜빡이는 캐럿의 유무가 "지금 입력을 받을 수 있는가" 를 가른다.
-     *
-     * 코드블록 줄은 제외한다 — --code-bg 로 이미 어두워서 겹치면 지저분해진다.
-     */
-    // ① 기본 테마의 하늘색 강조(`&light .cm-activeLine { #cceeff44 }`)를 끈다.
-    '.cm-activeLine': { backgroundColor: 'transparent' },
-    // ② 포커스가 없어도 위치는 남긴다 (옅게).
-    '.cm-line.cm-activeLine:not(.cm-code-line)': { backgroundColor: 'var(--active-line-bg)' },
-    // ③ 포커스가 있으면 한 단계 진하게 — "지금 여기에 입력된다".
-    '&.cm-focused .cm-line.cm-activeLine:not(.cm-code-line)': {
-      backgroundColor: 'var(--active-line-bg-focused)',
-    },
-    // ④ 코드블록 줄은 ①이 배경을 지워 버리므로 --code-bg 를 명시적으로 되돌린다.
-    //    (editor.css 의 `.cm-code-line` 은 명시도 1이라 테마 규칙 ①에 진다)
-    '.cm-line.cm-activeLine.cm-code-line': { backgroundColor: 'var(--code-bg)' },
+    /* 현재 줄 강조는 **없다.** 사용자 요청으로 걷어냈다 (2026-07-26).
+     * `cm-activeLine` 클래스를 붙이는 곳은 `highlightActiveLine()` 하나뿐이고
+     * (@codemirror/view 6.43.6 · dist/index.js:10008), editor/index.ts 에서 그 확장을
+     * 뺐으므로 기본 테마의 하늘색 규칙(`&light .cm-activeLine`, dist:6923)도
+     * **매칭될 엘리먼트가 없다.** 그것을 끄는 규칙을 따로 둘 필요가 없다. */
   },
   { dark: false },
 )
@@ -179,32 +181,62 @@ export const noteEditorTheme = EditorView.theme(
 /**
  * 코드블록 안의 언어별 하이라이트.
  *
- * 토큰이 `--code-fg` / `--code-keyword` 두 개뿐이므로 색을 새로 만들지 않고
- * 클래스만 부여한다. 실제 색은 `editor.css`에서 토큰으로 지정한다.
- * (디자인 94~97행: 본문 `#d8d2c8`, 키워드 `#c8a2ff`)
+ * `markdown({ codeLanguages: languages })` (editor/index.ts) 가 `@codemirror/language-data`
+ * 를 물려 놓았으므로, 펜스의 언어 태그(```` ```ts ````)에 맞는 lezer 파서가 붙고
+ * 그 파서가 내보내는 `@lezer/highlight` 태그를 여기서 클래스로 바꾼다.
+ * 실제 색은 `editor.css` 가 `--code-*` 토큰으로 지정한다 — 여기에 색을 쓰지 않는다.
+ *
+ * ▸ **디자인에 없는 의도적 확장이다.** 디자인 원본(94~97행)이 정한 코드블록 색은
+ *   배경 `#2a2521` · 본문 `#d8d2c8` · 키워드 `#c8a2ff` 셋뿐이고, 그 톤(어두운 웜 배경
+ *   + 보라 키워드)에 맞춰 8계열로 넓혔다. 색의 근거·대비 계산은 `tokens.css` 의
+ *   "코드 블록" 절에 적어 두었다. 사용자 요청 "코드블럭 스타일 언어별로 적용해줘"
+ *   (2026-07-26).
+ *
+ * ▸ **상위 태그 하나로 하위 태그가 전부 걸린다.** `@lezer/highlight` 의 태그는
+ *   부모를 갖고(`lineComment = t(comment)`), 스타일 탐색은 태그의 `set`(자기 →
+ *   부모 순)을 훑는다. 그래서 `comment` 하나면 line/block/docComment 가 같이 잡히고,
+ *   더 구체적인 태그에 규칙을 주면 그쪽이 이긴다 — 아래 `atom`/`null` 이 그 경우다
+ *   (둘 다 `keyword` 의 자식이지만 상수 색으로 뽑아낸다).
+ *
+ * ▸ 주의: `bracket` 은 `punctuation` 의 자식이 **아니다.** 둘 다 적어야 한다.
  */
 export const codeHighlightStyle = HighlightStyle.define([
+  // ── 키워드 (if/for/class/import/self …) — 디자인이 정한 유일한 신택스 색
   { tag: tags.keyword, class: 'cm-hl-keyword' },
-  { tag: tags.controlKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.moduleKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.definitionKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.operatorKeyword, class: 'cm-hl-keyword' },
-  { tag: tags.self, class: 'cm-hl-keyword' },
-  { tag: tags.atom, class: 'cm-hl-keyword' },
-  { tag: tags.bool, class: 'cm-hl-keyword' },
-  { tag: tags.null, class: 'cm-hl-keyword' },
-  { tag: tags.function(tags.variableName), class: 'cm-hl-keyword' },
-  { tag: tags.function(tags.propertyName), class: 'cm-hl-keyword' },
-  { tag: tags.typeName, class: 'cm-hl-keyword' },
-  { tag: tags.className, class: 'cm-hl-keyword' },
-  { tag: tags.tagName, class: 'cm-hl-keyword' },
 
-  { tag: tags.comment, class: 'cm-hl-comment' },
-  { tag: tags.lineComment, class: 'cm-hl-comment' },
-  { tag: tags.blockComment, class: 'cm-hl-comment' },
+  // ── 타입 · 클래스 · 네임스페이스 · HTML 태그명
+  //    typeName 이 tagName 의 부모, name 은 className/namespace 의 부모다.
+  { tag: tags.typeName, class: 'cm-hl-type' },
+  { tag: tags.className, class: 'cm-hl-type' },
+  { tag: tags.namespace, class: 'cm-hl-type' },
 
+  // ── 함수 · 매크로. `function(...)` 은 수식자라 정의·호출 양쪽에 붙는다.
+  { tag: tags.function(tags.variableName), class: 'cm-hl-function' },
+  { tag: tags.function(tags.propertyName), class: 'cm-hl-function' },
+  { tag: tags.macroName, class: 'cm-hl-function' },
+
+  // ── 변수 · 속성 · 속성명 · 라벨 (propertyName 이 attributeName 의 부모)
+  { tag: tags.variableName, class: 'cm-hl-variable' },
+  { tag: tags.propertyName, class: 'cm-hl-variable' },
+  { tag: tags.labelName, class: 'cm-hl-variable' },
+
+  // ── 문자열 (docString · character · attributeValue 가 string 의 자식)
   { tag: tags.string, class: 'cm-hl-string' },
-  { tag: tags.special(tags.string), class: 'cm-hl-string' },
-  { tag: tags.number, class: 'cm-hl-string' },
   { tag: tags.regexp, class: 'cm-hl-string' },
+
+  // ── 숫자 · 상수 (integer/float 는 number 의 자식)
+  { tag: tags.number, class: 'cm-hl-number' },
+  { tag: tags.bool, class: 'cm-hl-number' },
+  { tag: tags.null, class: 'cm-hl-number' },
+  { tag: tags.atom, class: 'cm-hl-number' },
+  { tag: tags.escape, class: 'cm-hl-number' },
+
+  // ── 주석 · 메타(#!/셔뱅, 데코레이터, 어트리뷰트)
+  { tag: tags.comment, class: 'cm-hl-comment' },
+  { tag: tags.meta, class: 'cm-hl-comment' },
+
+  // ── 연산자 · 구두점 · 괄호
+  { tag: tags.operator, class: 'cm-hl-operator' },
+  { tag: tags.punctuation, class: 'cm-hl-operator' },
+  { tag: tags.bracket, class: 'cm-hl-operator' },
 ])

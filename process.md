@@ -23,7 +23,7 @@
 | **사용자 신고 5건** (커서·프로세스 유지·보드 갱신·자동 업데이트·이미지 리사이즈) | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** | `main` | 2026-07-26 |
 | **캐럿 가시성 재발** (신고 #1 재발) | — | 🟡 **검증 PASS · main 병합 — 사용자 실기 확인 대기** | `fix/caret-visibility` | 2026-07-26 |
 | **스크롤바 축소** | — | 🟡 **main 병합 — 사용자 실기 확인 대기** (검증 생략) | `fix/scrollbar` | 2026-07-26 |
-| **코드블록 언어별 스타일 · 줄 맨앞 캐럿 · 현재 줄 강조 제거** | — | 🔵 진행 중 | `fix/editor-polish` | 2026-07-26 |
+| **코드블록 언어별 스타일 · 줄 맨앞 캐럿 · 현재 줄 강조 제거** | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** (검증 생략) | `fix/editor-polish` | 2026-07-26 |
 
 > **2026-07-26 사용자 지시 — 이 세션 한정, 검증 에이전트 생략.**
 > 속도 문제로 구현 → 검증 루프의 **검증 단계를 건너뛴다.** 구현 에이전트가 `npm run build` · `npm test` 를
@@ -299,6 +299,9 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-07-26 | `src-tauri/tauri.conf.json` | `plugins.updater`(endpoints · pubkey · `installMode: passive`) + `bundle.createUpdaterArtifacts: true` **추가** | 위와 같은 건. 엔드포인트는 `releases/latest/download/latest.json` — CI 가 만들어 릴리스에 붙인다. **개인키는 저장소에 없다**: GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY` / `..._PASSWORD` |
 | 2026-07-26 | `src/lib/ipc.ts` | `UpdateInfo` 타입 · `EVENT_NOTES_CHANGED` · `EVENT_UPDATE_AVAILABLE` · `getAppVersion` `checkUpdate` `getPendingUpdate` `installUpdate` **추가** | 위 커맨드/이벤트의 래퍼. 순수 추가라 기존 시그니처 불변 |
 | 2026-07-26 | `src/styles/tokens.css` | `--attach-handle: 14px` / `--attach-handle-bg` **추가** | 사용자 요청 #5 이미지 크기 조절 손잡이. 순수 추가 |
+| 2026-07-26 | `src/styles/tokens.css` | 코드블록 신택스 색 `--code-type` `--code-function` `--code-string` `--code-number` `--code-comment` `--code-operator` `--code-variable` **7개 추가** | 사용자 요청 "코드블럭 스타일 언어별로 적용해줘". 토큰이 `--code-fg`/`--code-keyword` 둘뿐이라 `codeHighlightStyle` 이 lezer 태그 20여 종을 3클래스로 뭉개고, 문자열·주석은 `--code-fg` + `opacity` 로 흉내 내고 있었다 — 언어별 구분이 사실상 없었다. **디자인에 없는 색이므로 확장 근거(원본 3색과의 톤 일치)와 --code-bg 대비 계산을 토큰 주석에 남겼다.** 기존 3개는 불변 |
+| 2026-07-26 | `src/styles/tokens.css` | `--active-line-bg` / `--active-line-bg-focused` **삭제** | 사용자가 현재 줄 강조를 거부했다 — "커서 있는 줄에 색상 입힌 거 별로인 거 같아". `highlightActiveLine()` 을 빼면 두 토큰의 사용처가 0 이 된다. 죽은 토큰을 남기면 다음 세션이 "쓰던 것"으로 오해해 되살린다. `--caret-w` 는 남는다 (캐럿 굵기는 계속 쓴다) |
+| 2026-07-26 | `src/styles/tokens.css` | `--scrollbar-w: 8px` / `--scrollbar-thumb-w: 4px` / `--scrollbar-thumb-w-hover: 6px` **추가** | 스크롤바 축소 작업이 동결 규칙을 지키느라 `var(--scrollbar-w, 8px)` 폴백으로 돌려 뒀다 — 치수 3개가 `theme.ts`(종이)와 `board.css`(다크 크롬) **두 곳에 각각 박혀** 한쪽만 고치면 두 창의 스크롤바 굵기가 조용히 어긋난다. 토큰으로 올리고 폴백을 걷어내 근거를 한 곳으로 모았다. 순수 추가라 기존 변수 불변 |
 | 2026-07-26 | `src/styles/tokens.css` | `--caret-w: 1.5px` / `--active-line-bg` / `--active-line-bg-focused` **추가** | 캐럿 재발 수정의 검증에서 **토큰 의미 오용 3건** 적발. 구현 에이전트가 동결 규칙을 지키느라 `--checkbox-border-w`(체크박스 테두리)를 캐럿 굵기로, `--footer-bg`(푸터 배경)·`--paper-divider`(본문 구분선)를 현재 줄 강조로 재사용했다 — 나중에 체크박스 테두리를 조정하면 캐럿 굵기가 조용히 따라 바뀐다. 리더가 순수 추가로 해소. 기존 변수 불변 |
 
 ### 계약을 바꿔야 할 때

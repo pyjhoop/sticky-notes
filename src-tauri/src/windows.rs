@@ -30,6 +30,23 @@ pub const EVENT_SAVE_ALL: &str = "sticky://save-all";
 /// 지오메트리 복원이 끝났음을 알리는 이벤트
 pub const EVENT_NOTE_META_CHANGED: &str = "sticky://note-meta-changed";
 
+/// **메모 집합이 바뀌었다** — 생성 · 저장 · 메타 변경 · 삭제 · 창 열기/닫기.
+///
+/// 보드 창이 이걸 듣고 목록을 다시 읽는다. 페이로드는 없다 — 받는 쪽이
+/// 자기 필터·검색어로 다시 질의하는 편이 단순하고, 놓칠 상태가 없다.
+pub const EVENT_NOTES_CHANGED: &str = "sticky://notes-changed";
+
+/// 메모 목록이 바뀌었음을 모든 창에 알린다.
+///
+/// 실패해도 호출자의 결과를 뒤집지 않는다 — 저장은 이미 됐고, 알림만 못 간 것이다.
+/// 대신 조용히 넘기지 않고 로그에 남긴다.
+pub fn emit_notes_changed<R: Runtime>(app: &AppHandle<R>) {
+    use tauri::Emitter;
+    if let Err(e) = app.emit(EVENT_NOTES_CHANGED, ()) {
+        eprintln!("[windows] notes-changed 전파 실패: {e}");
+    }
+}
+
 pub fn note_label(id: &str) -> String {
     format!("note-{id}")
 }
@@ -114,13 +131,30 @@ fn restore_geometry<R: Runtime>(app: &AppHandle<R>, window: &tauri::WebviewWindo
     let _ = window.set_position(tauri::PhysicalPosition::new(x.round() as i32, y.round() as i32));
 }
 
-#[tauri::command]
+/// 창을 만드는 커맨드는 전부 `#[tauri::command(async)]` 다.
+///
+/// 2026-07-26 사용자 결함 신고 #3. Tauri 는 `async` 가 아닌 커맨드를 **메인 스레드에서**
+/// 실행한다. 즉 웹뷰 IPC 콜백 안에서 다시 WebView2 를 만들게 되는데, 이 재진입 구간에서
+/// 창 생성이 멈추면 이벤트 루프째로 막혀 **앱 전체가 응답을 잃는다**(추가·열기·삭제가
+/// 한꺼번에 안 먹는 증상). `(async)` 를 붙이면 커맨드가 스레드풀로 빠지고 창 생성은
+/// `send_user_message` → 이벤트 루프 큐로 정상 직렬화된다.
+#[tauri::command(async)]
 pub fn open_note_window<R: Runtime>(app: AppHandle<R>, id: String) -> CmdResult<()> {
-    ensure_note_window(&app, &id).map(|_| ())
+    ensure_note_window(&app, &id)?;
+    // 창이 떠 있다는 사실을 DB에도 남긴다. 이게 없으면 보드 카드의 점이 계속
+    // 회색이고, 재시작하면 방금 연 메모가 되살아나지 않는다.
+    if let Err(e) = app
+        .state::<Db>()
+        .with(|c| crate::notes::set_open_in(c, &id, true))
+    {
+        eprintln!("[windows] open 플래그 저장 실패: {e}");
+    }
+    emit_notes_changed(&app);
+    Ok(())
 }
 
-/// 메모를 새로 만들고 창까지 띄운다 (`+` 버튼 · `Ctrl+Alt+N`).
-#[tauri::command]
+/// 메모를 새로 만들고 창까지 띄운다 (`+` 버튼 · `Ctrl+Alt+N` · 보드 `+`).
+#[tauri::command(async)]
 pub fn new_note_window<R: Runtime>(
     app: AppHandle<R>,
     db: tauri::State<'_, Db>,
@@ -128,10 +162,11 @@ pub fn new_note_window<R: Runtime>(
 ) -> CmdResult<String> {
     let note = db.with(|c| crate::notes::create_note_in(c, color))?;
     ensure_note_window(&app, &note.id)?;
+    emit_notes_changed(&app);
     Ok(note.id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn focus_note_window<R: Runtime>(app: AppHandle<R>, id: String) -> CmdResult<()> {
     match app.get_webview_window(&note_label(&id)) {
         Some(w) => {
@@ -139,12 +174,21 @@ pub fn focus_note_window<R: Runtime>(app: AppHandle<R>, id: String) -> CmdResult
             let _ = w.show();
             w.set_focus().map_err(|e| e.to_string())
         }
-        None => ensure_note_window(&app, &id).map(|_| ()),
+        None => open_note_window(app, id),
+    }
+}
+
+/// 창만 없앤다 — DB는 건드리지 않는다. 삭제 경로(`soft_delete_note`)가 쓴다.
+pub fn destroy_note_window<R: Runtime>(app: &AppHandle<R>, id: &str) {
+    if let Some(w) = app.get_webview_window(&note_label(id)) {
+        if let Err(e) = w.destroy() {
+            eprintln!("[windows] 메모 창 destroy 실패({id}): {e}");
+        }
     }
 }
 
 /// `✕` — 창 destroy + `notes.open = 0`. 메모 자체는 DB에 남는다.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn close_note_window<R: Runtime>(app: AppHandle<R>, id: String) -> CmdResult<()> {
     if let Some(w) = app.get_webview_window(&note_label(&id)) {
         // 닫히기 전에 마지막 위치를 남긴다 (프론트 디바운스가 놓친 이동 대비)
@@ -156,7 +200,9 @@ pub fn close_note_window<R: Runtime>(app: AppHandle<R>, id: String) -> CmdResult
         w.destroy().map_err(|e| e.to_string())?;
     }
     app.state::<Db>()
-        .with(|c| crate::notes::set_open_in(c, &id, false))
+        .with(|c| crate::notes::set_open_in(c, &id, false))?;
+    emit_notes_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -266,23 +312,23 @@ fn toggle_singleton<R: Runtime>(app: &AppHandle<R>, label: &str, query: &str) ->
     Ok(true)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn show_board_window<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
     ensure_singleton(&app, BOARD_LABEL, "board").map(|_| ())
 }
 
 /// 트레이 좌클릭 — 보드 토글. 반환값은 "지금 열려 있는가".
-#[tauri::command]
+#[tauri::command(async)]
 pub fn toggle_board_window<R: Runtime>(app: AppHandle<R>) -> CmdResult<bool> {
     toggle_singleton(&app, BOARD_LABEL, "board")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn show_settings_window<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
     ensure_singleton(&app, SETTINGS_LABEL, "settings").map(|_| ())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn toggle_settings_window<R: Runtime>(app: AppHandle<R>) -> CmdResult<bool> {
     toggle_singleton(&app, SETTINGS_LABEL, "settings")
 }

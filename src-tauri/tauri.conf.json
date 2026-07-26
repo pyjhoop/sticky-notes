@@ -88,9 +88,21 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/pyjhoop/sticky-notes/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVCQzRDNDgxMzU2NDFGNzMKUldSekgyUTFnY1RFVzdrc2s2UVFmaUNsYnR4aVFZekU0RlpXVlBZR254dTJUQjJBQWZlMVM1MWEK",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -150,10 +150,12 @@
 /* 96×64 플레이스홀더를 그대로 재사용한다 — 로드 전·실패 시엔 빗금 배경이
    그대로 보이고, 로드되면 같은 상자 안에 이미지가 채워진다. */
 .cm-attachment {
+  position: relative;
   display: inline-grid;
   place-items: center;
   width: var(--attach-w);
   height: var(--attach-h);
+  max-width: 100%;
   vertical-align: bottom;
   overflow: hidden;
   border: 1px solid var(--attach-border);
@@ -171,6 +173,54 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* ── 크기 조절 ────────────────────────────────────────────
+ * `![|400](x.png)` 처럼 너비가 적힌 첨부는 96×64 플레이스홀더 대신 그 크기로 그린다.
+ * 높이는 `auto` 라 비율이 유지되므로 잘라내지 않고 전체를 보여 준다.
+ * 인라인 width/height 는 위젯(`src/editor/images.ts`)이 넣는다.
+ */
+.cm-attachment--sized {
+  overflow: visible;
+}
+
+.cm-attachment--sized .cm-attachment__img {
+  height: auto;
+  object-fit: contain;
+  border-radius: inherit;
+}
+
+/* 끄는 동안은 이미지가 마우스를 가로채지 않게 한다 */
+.cm-attachment--resizing {
+  user-select: none;
+}
+
+.cm-attachment--resizing .cm-attachment__img {
+  pointer-events: none;
+}
+
+/* 우하단 손잡이 — 평소엔 숨기고 첨부 위에 올렸을 때만 보여 준다.
+   메모 창의 리사이즈 그립(.note-grip)과 같은 시각 언어를 쓴다. */
+.cm-attachment__handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: var(--attach-handle);
+  height: var(--attach-handle);
+  cursor: nwse-resize;
+  opacity: 0;
+  border-bottom-right-radius: var(--radius-attach);
+  background: linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0) 50%,
+    var(--attach-handle-bg) 50%
+  );
+  transition: opacity var(--fade-duration) var(--fade-ease);
+}
+
+.cm-attachment:hover .cm-attachment__handle,
+.cm-attachment--resizing .cm-attachment__handle {
+  opacity: 1;
 }
 
 .cm-attachment__label {

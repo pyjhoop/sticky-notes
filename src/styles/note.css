@@ -199,12 +199,15 @@
 }
 
 /* ── 본문 ────────────────────────────────────────────────── */
+/* 본문 패딩은 에디터의 여백이다. 커서 모양도 그렇게 보여야 한다 —
+   여기를 누르면 창이 끌리는 게 아니라 캐럿이 들어간다 (NoteWindow 의 onMouseDown). */
 .note-body {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
   padding: var(--note-body-pad-y) var(--note-body-pad-x) var(--note-body-pad-bottom);
+  cursor: text;
 }
 
 /* ── 단축키 등록 실패 배너 ────────────────────────────────
@@ -233,6 +236,16 @@
 /* 백엔드 호출 실패 — 경고(노랑)보다 강한 오류(빨강). 디자인의 닫기 빨강을 쓴다. */
 .note-alert--error .note-alert__dot {
   background: var(--red-close);
+}
+
+/* 새 버전 알림 — 경고가 아니라 안내다. 저장 완료와 같은 초록 점을 쓴다. */
+.note-alert--update .note-alert__dot {
+  background: var(--green-done);
+}
+
+.note-alert__dismiss:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .note-alert__text {

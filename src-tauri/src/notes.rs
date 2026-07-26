@@ -9,8 +9,10 @@ use std::collections::HashMap;
 
 use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Runtime};
 
 use crate::db::Db;
+use crate::windows::emit_notes_changed;
 use crate::CmdResult;
 
 /// 팔레트 인덱스 0..4 (`src/lib/palette.ts` 순서와 동일)
@@ -816,9 +818,22 @@ fn prefixed_columns(alias: &str) -> String {
 // 커맨드 — 얇은 래퍼
 // ─────────────────────────────────────────────────────────────
 
+/// 메모 집합이 바뀌는 커맨드는 **반드시** `emit_notes_changed`로 끝난다.
+///
+/// 2026-07-26 사용자 결함 신고 #3 — 보드 창이 한 번 읽은 목록을 끝까지 들고 있었다.
+/// 다른 창에서 메모를 만들거나 지워도 보드에는 아무 일도 일어나지 않아
+/// "추가가 안 된다 / 삭제가 안 된다"로 보였다. 원인은 **바뀜을 알리는 쪽이 없었던 것**이다:
+/// `sticky://note-meta-changed`는 `shortcuts.rs`의 전역 핀 토글에서만 emit 됐고,
+/// create/save/set_meta/soft_delete 어디에서도 이벤트가 나가지 않았다.
 #[tauri::command]
-pub fn create_note(db: tauri::State<'_, Db>, color: Option<ColorIndex>) -> CmdResult<Note> {
-    db.with(|c| create_note_in(c, color))
+pub fn create_note<R: Runtime>(
+    app: AppHandle<R>,
+    db: tauri::State<'_, Db>,
+    color: Option<ColorIndex>,
+) -> CmdResult<Note> {
+    let note = db.with(|c| create_note_in(c, color))?;
+    emit_notes_changed(&app);
+    Ok(note)
 }
 
 #[tauri::command]
@@ -836,18 +851,43 @@ pub fn list_notes(
 
 /// body/title/tags/links/updated_at을 **한 트랜잭션에서** 갱신한다.
 #[tauri::command]
-pub fn save_note(db: tauri::State<'_, Db>, id: String, body: String) -> CmdResult<SaveResult> {
-    db.with(|c| save_note_in(c, &id, &body))
+pub fn save_note<R: Runtime>(
+    app: AppHandle<R>,
+    db: tauri::State<'_, Db>,
+    id: String,
+    body: String,
+) -> CmdResult<SaveResult> {
+    let result = db.with(|c| save_note_in(c, &id, &body))?;
+    emit_notes_changed(&app);
+    Ok(result)
 }
 
 #[tauri::command]
-pub fn set_note_meta(db: tauri::State<'_, Db>, id: String, meta: NoteMeta) -> CmdResult<Note> {
-    db.with(|c| set_note_meta_in(c, &id, &meta))
+pub fn set_note_meta<R: Runtime>(
+    app: AppHandle<R>,
+    db: tauri::State<'_, Db>,
+    id: String,
+    meta: NoteMeta,
+) -> CmdResult<Note> {
+    let note = db.with(|c| set_note_meta_in(c, &id, &meta))?;
+    emit_notes_changed(&app);
+    Ok(note)
 }
 
-#[tauri::command]
-pub fn soft_delete_note(db: tauri::State<'_, Db>, id: String) -> CmdResult<()> {
-    db.with(|c| soft_delete_note_in(c, &id))
+// 창을 없애므로 `windows.rs` 의 창 커맨드들과 같은 이유로 `(async)` 다 —
+// 메인 스레드(웹뷰 IPC 콜백) 안에서 다른 창을 destroy 하지 않는다.
+#[tauri::command(async)]
+pub fn soft_delete_note<R: Runtime>(
+    app: AppHandle<R>,
+    db: tauri::State<'_, Db>,
+    id: String,
+) -> CmdResult<()> {
+    db.with(|c| soft_delete_note_in(c, &id))?;
+    // 지워진 메모의 창이 떠 있으면 같이 닫는다 — 보드에서 지웠는데 데스크톱에
+    // 그대로 남아 있으면 "삭제가 안 됐다"로 보인다.
+    crate::windows::destroy_note_window(&app, &id);
+    emit_notes_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]

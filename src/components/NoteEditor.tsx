@@ -12,11 +12,31 @@
 
 import { EditorState } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
-import { useEffect, useRef } from 'react'
+import { useEffect, useImperativeHandle, useRef, type Ref } from 'react'
 
 import { createNoteEditorExtensions, externalUpdate } from '../editor'
 import { attachmentStoreForRuntime } from '../lib/attachments'
 import '../styles/editor.css'
+
+/**
+ * 바깥에서 커서를 넣기 위한 최소 핸들.
+ *
+ * 2026-07-26 사용자 결함 신고 #1 — "메모 클릭하면 커서 깜빡이 해줘야 해".
+ * `drawSelection()` 이 그리는 캐럿은 **에디터가 포커스를 가진 동안에만** 보인다
+ * (`.cm-focused` 안에서만 `cm-blink` 애니메이션이 돈다). 창만 활성화되고
+ * 포커스가 `<body>` 에 남아 있으면 캐럿이 아예 없다. 그래서 창 쪽(NoteWindow)이
+ * 포커스를 넘겨줄 수 있어야 한다.
+ */
+export interface NoteEditorHandle {
+  /** 커서를 에디터로. 이미 포커스면 아무 일도 하지 않는다 */
+  focus(): void
+  /** 문서 끝에 커서를 두고 포커스 — 종이 여백을 클릭했을 때 */
+  focusEnd(): void
+  /** 화면 좌표에 가장 가까운 위치에 커서를 두고 포커스 */
+  focusAt(x: number, y: number): void
+  /** 지금 에디터가 포커스를 갖고 있는가 */
+  hasFocus(): boolean
+}
 
 export interface NoteEditorProps {
   /** 마크다운 원문. CodeMirror의 문서가 될 값이다 (CLAUDE.md 절대규칙 3) */
@@ -27,6 +47,8 @@ export interface NoteEditorProps {
   autoFocus?: boolean
   /** 접근성 레이블 */
   placeholder?: string
+  /** 커서 제어용 핸들 (React 19 — `ref` 를 그냥 prop 으로 받는다) */
+  ref?: Ref<NoteEditorHandle>
 }
 
 export default function NoteEditor({
@@ -34,6 +56,7 @@ export default function NoteEditor({
   onChange,
   autoFocus = false,
   placeholder = '메모를 입력하세요',
+  ref,
 }: NoteEditorProps) {
   const host = useRef<HTMLDivElement | null>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -84,6 +107,34 @@ export default function NoteEditor({
       annotations: externalUpdate.of(true),
     })
   }, [value])
+
+  useImperativeHandle(
+    ref,
+    (): NoteEditorHandle => ({
+      focus() {
+        const view = viewRef.current
+        if (view && !view.hasFocus) view.focus()
+      },
+      focusEnd() {
+        const view = viewRef.current
+        if (!view) return
+        view.focus()
+        view.dispatch({ selection: { anchor: view.state.doc.length }, scrollIntoView: true })
+      },
+      focusAt(x, y) {
+        const view = viewRef.current
+        if (!view) return
+        view.focus()
+        // 좌표가 본문 밖(여백)이면 `posAtCoords` 가 null 이다 — 그때는 문서 끝.
+        const pos = view.posAtCoords({ x, y }, false) ?? view.state.doc.length
+        view.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+      },
+      hasFocus() {
+        return viewRef.current?.hasFocus ?? false
+      },
+    }),
+    [],
+  )
 
   return <div ref={host} className="cm-note-editor selectable" />
 }

@@ -20,12 +20,16 @@ import { formatDatePrefix } from '../lib/time'
 import {
   applyWindowBackdrop,
   backupDb,
+  checkUpdate,
   exportMarkdown,
+  getAppVersion,
   getAutostart,
   getDbPath,
+  getPendingUpdate,
   getSettings,
   getShortcutFailures,
   getShortcuts,
+  installUpdate,
   isTauri,
   revealPath,
   setAutostart,
@@ -34,6 +38,7 @@ import {
   type Settings,
   type ShortcutAction,
   type ShortcutBinding,
+  type UpdateInfo,
 } from '../lib/ipc'
 import '../styles/settings.css'
 
@@ -69,6 +74,14 @@ export default function SettingsWindow() {
    * `null` 이면 아직 읽지 못한 상태다.
    */
   const [autostart, setAutostartState] = useState<boolean | null>(null)
+
+  // ── 자동 업데이트 ──────────────────────────────────────────
+  const [version, setVersion] = useState('')
+  const [update, setUpdate] = useState<UpdateInfo | null>(null)
+  /** `idle` → `checking` → (`found` | `latest` | `failed`) → `installing` */
+  const [updateState, setUpdateState] = useState<
+    'idle' | 'checking' | 'found' | 'latest' | 'installing'
+  >('idle')
 
   // mica → acrylic → 불투명. 결과를 body에 실어 배경 규칙을 전환한다 (settings.css).
   useEffect(() => {
@@ -111,6 +124,47 @@ export default function SettingsWindow() {
       .catch((e) =>
         setNotice({ text: failureNotice('자동 시작 상태를 읽지 못했습니다', e), warn: true }),
       )
+    getAppVersion()
+      .then(setVersion)
+      .catch(() => {
+        // 버전 표시가 비는 것뿐이다. 배너를 띄울 일은 아니다.
+      })
+    // 시작 시 백엔드가 확인해 둔 결과가 있으면 바로 보여 준다.
+    getPendingUpdate()
+      .then((u) => {
+        if (u) {
+          setUpdate(u)
+          setUpdateState('found')
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  /** 지금 확인. 실패는 반드시 사유와 함께 노출한다 — 조용한 무동작이면 안 된다. */
+  const onCheckUpdate = useCallback(async () => {
+    setUpdateState('checking')
+    try {
+      const found = await checkUpdate()
+      setUpdate(found)
+      setUpdateState(found ? 'found' : 'latest')
+    } catch (e) {
+      setUpdateState('idle')
+      setNotice({ text: failureNotice('업데이트를 확인하지 못했습니다', e), warn: true })
+    }
+  }, [])
+
+  /**
+   * 설치. 성공하면 앱이 재시작되므로 이 함수는 **돌아오지 않는다** —
+   * 돌아왔다는 것은 실패했다는 뜻이다.
+   */
+  const onInstallUpdate = useCallback(async () => {
+    setUpdateState('installing')
+    try {
+      await installUpdate()
+    } catch (e) {
+      setUpdateState('found')
+      setNotice({ text: failureNotice('업데이트를 설치하지 못했습니다', e), warn: true })
+    }
   }, [])
 
   /** 로컬 상태를 먼저 반영하고 백엔드에 흘린다. 저장 실패는 배너로 알린다. */
@@ -389,6 +443,54 @@ export default function SettingsWindow() {
               onChange={(v) => patch('filenameDatePrefix', v)}
             />
           </div>
+        </div>
+
+        <div className="settings__divider" />
+
+        {/* ── UPDATE ────────────────────────────────────────── */}
+        {/* 디자인에 없던 섹션이다. 모노 레이블 · settings__row 규칙은 그대로 따른다. */}
+        <div className="settings__section">
+          <div className="mono-label">UPDATE</div>
+
+          <div className="settings__row">
+            <div className="settings__label">
+              현재 버전
+              <div className="settings__sub--mono">{version || '읽는 중…'}</div>
+            </div>
+            <button
+              type="button"
+              className="dark-btn"
+              disabled={updateState === 'checking' || updateState === 'installing'}
+              onClick={() => void onCheckUpdate()}
+            >
+              {updateState === 'checking' ? '확인 중…' : '지금 확인'}
+            </button>
+          </div>
+
+          {updateState === 'latest' && (
+            <div className="settings__sub">최신 버전을 쓰고 있습니다.</div>
+          )}
+
+          {update && (
+            <div className="settings__row">
+              <div className="settings__label">
+                새 버전 {update.version}
+                <div className="settings__sub">
+                  내려받아 설치한 뒤 앱을 다시 시작합니다. 열린 메모는 먼저 저장됩니다.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="dark-btn"
+                disabled={updateState === 'installing'}
+                onClick={() => void onInstallUpdate()}
+              >
+                {updateState === 'installing' ? '설치 중…' : '설치'}
+              </button>
+            </div>
+          )}
+
+          {update?.notes && <div className="settings__sub">{update.notes}</div>}
         </div>
 
         <div className="settings__divider" />

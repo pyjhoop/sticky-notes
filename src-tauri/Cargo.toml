@@ -25,6 +25,9 @@ tauri-plugin-dialog = "2.7.2"
 tauri-plugin-global-shortcut = "2.3.2"
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-single-instance = "2.4.3"
+tauri-plugin-updater = "2.9.0"
+# `update.rs` 의 대기(sleep)에만 쓴다. tauri 가 이미 tokio 위에 있으므로 추가 비용은 없다.
+tokio = { version = "1", features = ["time"] }
 uuid = { version = "1.20.0", features = ["v7", "serde"] }
 window-vibrancy = "0.8.0"
 windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_Graphics_Dwm", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi"] }

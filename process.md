@@ -20,6 +20,7 @@
 | **통합 게이트** | — | ✅ **완료 — 검증 PASS** (스텁 잔존 0, 실행 확인) | `main` | 2026-07-26 |
 | M7 첨부·패키징 | — | ✅ **완료 — main 병합** (코드 검증만) | `m7-attachments` | 2026-07-26 |
 | **사용자 신고 결함 2건** (투명도 실시간 반영 · 메모 바깥 검정 영역) | — | ✅ **완료 — 실기 확인 PASS** | `main` | 2026-07-26 |
+| **사용자 신고 5건** (커서·프로세스 유지·보드 갱신·자동 업데이트·이미지 리사이즈) | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** | `main` | 2026-07-26 |
 
 상태 기호: ⬜ 대기 · 🔒 선행 미완 · 🔵 진행 중 · 🟡 사람 확인 대기 · ✅ 완료 · ⚠️ 막힘
 
@@ -285,6 +286,11 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-07-26 | `src-tauri/src/lib.rs` | `pub mod attachments;` + `attachments::save_attachment` `attachments::get_attachments_dir` **등록** | M7 이미지 첨부. 새 모듈이라 기존 커맨드 시그니처 불변 |
 | 2026-07-26 | `src/lib/ipc.ts` | `saveAttachment()` `getAttachmentsDir()` **추가** (파일 끝) | 위 커맨드 2개의 래퍼. `saveAttachment`만 raw IPC 바디(`invoke(cmd, bytes, {headers})`)를 쓰므로 `call()`을 거치지 않는다 — 수 MB 스크린샷을 JSON 숫자 배열로 보내면 붙여넣기마다 멈춘다. 순수 추가 |
 | 2026-07-26 | `src-tauri/tauri.conf.json` | `version` `0.1.0` → `1.0.0` | M7 정식 릴리스 전환. `package.json`·`Cargo.toml`도 동일. CI는 빌드 시 `1.0.<run_number>`를 주입한다 (plan.md "CI/CD") |
+| 2026-07-26 | `src-tauri/src/lib.rs` | `run()` 을 `.run(context)` → `.build(context)?.run(closure)` 로 바꾸고 **`RunEvent::ExitRequested` 에서 `api.prevent_exit()`** | 사용자 신고 #2 — 메모 창을 전부 ✕로 닫으면 프로세스가 죽어 트레이 아이콘까지 사라졌다. tao 는 마지막 창이 destroy 되면 `ExitRequested { code: None }` 을 올리고 기본 동작으로 종료한다(`tauri-runtime-wry-2.11.4/src/lib.rs:4316`). `code` 가 실린 종료(트레이 `종료` → `app.exit(0)`, 같은 파일 `:4356`)만 통과시킨다 |
+| 2026-07-26 | `src-tauri/src/lib.rs` | `pub mod update;` + `tauri_plugin_updater` 플러그인 + `update::{get_app_version, check_update, install_update, get_pending_update}` 등록 + `UpdateState` manage + `update::bootstrap` | 사용자 요청 #4 자동 업데이트. 새 모듈이라 기존 커맨드 시그니처 불변 |
+| 2026-07-26 | `src-tauri/tauri.conf.json` | `plugins.updater`(endpoints · pubkey · `installMode: passive`) + `bundle.createUpdaterArtifacts: true` **추가** | 위와 같은 건. 엔드포인트는 `releases/latest/download/latest.json` — CI 가 만들어 릴리스에 붙인다. **개인키는 저장소에 없다**: GitHub Secrets `TAURI_SIGNING_PRIVATE_KEY` / `..._PASSWORD` |
+| 2026-07-26 | `src/lib/ipc.ts` | `UpdateInfo` 타입 · `EVENT_NOTES_CHANGED` · `EVENT_UPDATE_AVAILABLE` · `getAppVersion` `checkUpdate` `getPendingUpdate` `installUpdate` **추가** | 위 커맨드/이벤트의 래퍼. 순수 추가라 기존 시그니처 불변 |
+| 2026-07-26 | `src/styles/tokens.css` | `--attach-handle: 14px` / `--attach-handle-bg` **추가** | 사용자 요청 #5 이미지 크기 조절 손잡이. 순수 추가 |
 
 ### 계약을 바꿔야 할 때
 
@@ -471,6 +477,18 @@ git merge track/b-editor
 | M0 스파이크 4 | 메모 창 드래그·리사이즈 중 깜빡임 정도 |
 | M5 DoD | 보드 창 리사이즈 중 mica 검은 플래시 (폴백 체인·CSS 방어는 구현됨, 실제 발생 여부만 미확인) |
 | 트랙 D 검증 | 보드 창 라운드 코너 — `transparent:false`인데 `border-radius:10px`라 코너 4개 삼각형에 창 배경이 비칠 수 있음. opaque 폴백 시엔 색이 같아 무해하나 mica/acrylic 경로는 실행해 봐야 안다 |
+
+### 사용자 신고 5건 — 2026-07-26 처리 내역
+
+| # | 신고 | 원인 | 처리 |
+|---|---|---|---|
+| 1 | 메모를 클릭해도 커서가 안 깜빡인다 | `drawSelection()` 캐럿은 **에디터가 포커스일 때만** 그려진다(`.cm-focused` 안에서만 `cm-blink`). 창만 활성화되고 포커스가 `<body>` 에 남으면 캐럿이 없다. 게다가 종이 본문 여백 mousedown 은 `startDragging()` 이라 눌러도 커서가 안 들어갔다 | `NoteEditor` 에 `focus/focusEnd/focusAt/hasFocus` 핸들 노출 · 창 생성 시 `autoFocus` · 창 포커스마다 에디터로 커서 복귀 · **본문 여백 클릭 = 캐럿 배치**(드래그 아님). 대신 컨트롤 바·푸터의 드래그 영역을 넓혔다 |
+| 2 | 메모를 전부 닫으면 프로세스가 죽는다 | tao 가 마지막 창 destroy 에 `ExitRequested { code: None }` → 기본 종료 | `lib.rs` 에서 `code.is_none()` 이면 `prevent_exit()`. 트레이 `종료`(`code: Some(0)`)만 실제로 끝난다 |
+| 3 | 보드 창에서 추가·열기·삭제가 안 된다 | **바뀜을 알리는 쪽이 없었다.** `sticky://note-meta-changed` 는 `shortcuts.rs` 전역 핀 토글에서만 emit 됐고 create/save/set_meta/soft_delete 는 아무 이벤트도 안 냈다 → 보드는 처음 읽은 목록을 끝까지 들고 있었다. 보드에는 **새 메모 버튼 자체가 없었고**, `open_note_window` 는 `notes.open` 을 1로 만들지 않았다 | `sticky://notes-changed` 신설 + 위 4개 커맨드와 창 열기/닫기에서 emit · 보드가 이벤트·창 포커스 양쪽에서 재조회 · 보드 툴바에 `+ 새 메모` · `open_note_window` 가 `open=1` 기록 · 삭제 시 그 메모의 창도 destroy · 우클릭 메뉴 닫기를 `stopPropagation` 대신 target 검사로 · **창을 만들거나 없애는 커맨드 전부 `#[tauri::command(async)]`** (동기 커맨드는 메인 스레드에서 돌아 웹뷰 IPC 콜백 안에서 WebView2 를 만들게 된다) |
+| 4 | 자동 업데이트 | — | `tauri-plugin-updater`. 확인·다운로드·설치는 전부 Rust(`update.rs`) — 웹뷰 CSP 를 열지 않아도 된다. 시작 4초 뒤 1회 자동 확인 → 메모 창 배너 · 설정 창 `UPDATE` 섹션 |
+| 5 | 이미지 마우스로 크기 조절 | — | 위젯 우하단 손잡이. 끄는 동안은 상자의 인라인 `width` 만 바꾸고(미리보기), **손을 뗄 때 트랜잭션 1회**로 `![|400](…)` 를 쓴다(절대규칙 4). 문법은 옵시디언과 동일 — 내보낸 `.md` 가 볼트에서 그대로 렌더돼야 한다 |
+
+**#4 는 사용자 조치가 남아 있다** — GitHub 저장소 Secrets 에 서명 키 2개를 등록해야 CI 가 통과한다. 등록 전까지 `release.yml` 의 "서명 키 확인" 단계에서 명시적으로 실패한다(조용히 서명 없는 인스톨러를 내보내지 않는다).
 
 ### 막힘 기록
 

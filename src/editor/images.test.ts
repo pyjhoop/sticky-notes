@@ -22,7 +22,10 @@ import {
   handlePaste,
   imageFilesFrom,
   imageInsertText,
+  imageMarkdownWithWidth,
   insertPastedImages,
+  IMAGE_MAX_WIDTH,
+  IMAGE_MIN_WIDTH,
   parseImageMarkdown,
   setDropTarget,
   type AttachmentStore,
@@ -104,18 +107,26 @@ describe('마크다운 파싱', () => {
     expect(parseImageMarkdown('![](attachments/abc.png)')).toEqual({
       alt: '',
       url: 'attachments/abc.png',
+      width: null,
+      height: null,
     })
     expect(parseImageMarkdown('![스크린샷](attachments/abc.png)')).toEqual({
       alt: '스크린샷',
       url: 'attachments/abc.png',
+      width: null,
+      height: null,
     })
     expect(parseImageMarkdown('![](<attachments/a b.png>)')).toEqual({
       alt: '',
       url: 'attachments/a b.png',
+      width: null,
+      height: null,
     })
     expect(parseImageMarkdown('![](attachments/a.png "제목")')).toEqual({
       alt: '',
       url: 'attachments/a.png',
+      width: null,
+      height: null,
     })
   })
 
@@ -123,6 +134,51 @@ describe('마크다운 파싱', () => {
     for (const bad of ['[](a.png)', '![]()', '![](  )', '텍스트', '![alt](']) {
       expect(parseImageMarkdown(bad), bad).toBeNull()
     }
+  })
+
+  // 크기 문법은 옵시디언과 같다 — 내보낸 .md 가 볼트에서 그대로 렌더돼야 한다
+  it('`|너비` · `|너비x높이` 를 크기로 읽는다', () => {
+    expect(parseImageMarkdown('![|400](attachments/a.png)')).toEqual({
+      alt: '',
+      url: 'attachments/a.png',
+      width: 400,
+      height: null,
+    })
+    expect(parseImageMarkdown('![캡션|400x260](attachments/a.png)')).toEqual({
+      alt: '캡션',
+      url: 'attachments/a.png',
+      width: 400,
+      height: 260,
+    })
+    // 숫자가 아니면 크기가 아니라 그냥 설명 텍스트다
+    expect(parseImageMarkdown('![a|b](attachments/a.png)')).toEqual({
+      alt: 'a|b',
+      url: 'attachments/a.png',
+      width: null,
+      height: null,
+    })
+  })
+})
+
+describe('크기 다시 쓰기', () => {
+  const base = { alt: '', url: 'attachments/a.png', width: null, height: null }
+
+  it('너비만 남기고 범위를 벗어난 값은 잘라 낸다', () => {
+    expect(imageMarkdownWithWidth(base, 320)).toBe('![|320](attachments/a.png)')
+    expect(imageMarkdownWithWidth(base, 1)).toBe(`![|${IMAGE_MIN_WIDTH}](attachments/a.png)`)
+    expect(imageMarkdownWithWidth(base, 99999)).toBe(`![|${IMAGE_MAX_WIDTH}](attachments/a.png)`)
+  })
+
+  it('`null` 이면 크기 지정을 없앤다 — 설명 텍스트는 남긴다', () => {
+    const sized = { alt: '캡션', url: 'attachments/a.png', width: 400, height: 260 }
+    expect(imageMarkdownWithWidth(sized, null)).toBe('![캡션](attachments/a.png)')
+  })
+
+  it('왕복해도 원문이 유지된다 (절대규칙 3)', () => {
+    const src = '![캡션|400](attachments/a.png)'
+    const parsed = parseImageMarkdown(src)
+    expect(parsed).not.toBeNull()
+    expect(imageMarkdownWithWidth(parsed!, parsed!.width)).toBe(src)
   })
 })
 

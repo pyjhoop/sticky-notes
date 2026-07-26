@@ -165,6 +165,7 @@ sticky-notes/
    ├─ lib.rs      db.rs      notes.rs
    ├─ windows.rs  win.rs     tray.rs
    ├─ shortcuts.rs           export.rs
+   ├─ attachments.rs         update.rs
 ```
 
 세 창 모두 같은 SPA 번들을 로드하고 `?w=note&id=…` / `?w=board` / `?w=settings`로 분기한다. WebView2가 번들을 캐싱하므로 창마다 재다운로드하지 않는다.
@@ -225,3 +226,6 @@ m0: 계약 스텁 + 디자인 토큰
 | 보드 창 리사이즈 시 검은 플래시 | mica → acrylic → 불투명 순으로 폴백 |
 | 한국어 검색이 부분 일치 안 됨 | FTS5 `unicode61`은 어절 내부를 못 쪼갠다. **`LIKE '%q%'`를 쓴다** (수천 개 규모까지 충분) |
 | 메모 창 10개에 메모리 폭증 | 닫은 창은 hide가 아니라 destroy. 보드/설정도 닫으면 destroy |
+| 메모를 전부 닫으면 앱이 통째로 죽는다 | tao는 마지막 창이 destroy되면 `ExitRequested { code: None }`을 올리고 기본 동작으로 종료한다. `lib.rs`의 `run` 콜백에서 **`code.is_none()`이면 `prevent_exit()`**. 트레이 `종료`만 `code: Some(0)`으로 통과한다 |
+| 창을 만드는 커맨드에서 앱이 멈춘다 | Tauri는 `async`가 아닌 커맨드를 **메인 스레드에서** 실행한다 → 웹뷰 IPC 콜백 안에서 WebView2를 만드는 재진입이 된다. 창을 만들거나 없애는 커맨드는 **`#[tauri::command(async)]`** |
+| 보드가 갱신되지 않는다 | 메모 집합을 바꾸는 커맨드는 반드시 `windows::emit_notes_changed()`로 끝낸다. 보드는 `sticky://notes-changed`와 창 포커스 두 경로로 재조회한다 |

@@ -284,6 +284,33 @@ body:not([data-backdrop]) .dark-window {
   flex: 1;
 }
 
+/* 새 메모 — 디자인에 보드용 버튼이 따로 없어 공용 `.dark-btn` 치수·색을 그대로 쓴다.
+   `+` 글리프는 메모 창 컨트롤 바의 `+` 와 같은 문자다. */
+.board__new {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--search-h);
+  padding: 0 12px;
+  border-radius: var(--radius-field);
+  background: var(--dark-btn-bg);
+  border: 1px solid var(--dark-btn-border);
+  font-size: var(--fs-meta);
+  color: var(--dark-text);
+  white-space: nowrap;
+  transition: background-color 120ms var(--fade-ease);
+}
+
+.board__new:hover {
+  background: var(--dark-btn-bg-hover);
+}
+
+.board__new > span:first-child {
+  font-size: 15px;
+  line-height: 1;
+}
+
 .board__status {
   display: flex;
   align-items: center;

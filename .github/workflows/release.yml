@@ -117,7 +117,23 @@ jobs:
 
       # ── 빌드 · 릴리스 ───────────────────────────────────────
       # tauri build 가 beforeBuildCommand 로 npm run build 를 다시 실행한다(1초대).
-      - name: NSIS 인스톨러 빌드
+      #
+      # 서명 키가 없으면 여기서 **바로 멈춘다.** 서명 없이 빌드하면 인스톨러는
+      # 나오지만 `.sig` 가 없어 latest.json 을 만들 수 없고, 이미 배포된 앱은
+      # "업데이트가 있다는데 설치가 안 되는" 상태가 된다. 조용히 넘어갈 일이 아니다.
+      - name: 서명 키 확인
+        shell: pwsh
+        env:
+          KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if (-not $env:KEY) {
+            throw '저장소 Secrets 에 TAURI_SIGNING_PRIVATE_KEY 가 없다. 자동 업데이트용 서명 키를 등록하라.'
+          }
+
+      - name: NSIS 인스톨러 빌드 (+ 업데이터 서명)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
 
       - name: 산출물 확인
@@ -128,6 +144,44 @@ jobs:
           $files = @(Get-ChildItem $dir -Filter *.exe)
           if ($files.Count -eq 0) { throw 'NSIS 인스톨러(.exe)가 생성되지 않았다.' }
           $files | ForEach-Object { Write-Host "$($_.Name)  $([math]::Round($_.Length/1MB,2)) MB" }
+
+      # ── 업데이터 매니페스트 ─────────────────────────────────
+      # `tauri.conf.json` 의 plugins.updater.endpoints 가 가리키는 파일을 만든다:
+      #   https://github.com/<owner>/<repo>/releases/latest/download/latest.json
+      # (`/releases/latest/` 는 prerelease 가 아닌 최신 릴리스로 리다이렉트된다)
+      - name: latest.json 생성
+        shell: pwsh
+        run: |
+          $dir = 'src-tauri/target/release/bundle/nsis'
+          $exe = @(Get-ChildItem $dir -Filter *-setup.exe)[0]
+          if (-not $exe) { throw "NSIS setup exe 를 찾지 못했다: $dir" }
+
+          $sigPath = "$($exe.FullName).sig"
+          if (-not (Test-Path $sigPath)) {
+            throw "서명 파일이 없다: $sigPath — bundle.createUpdaterArtifacts 와 서명 키를 확인하라."
+          }
+          $signature = (Get-Content $sigPath -Raw).Trim()
+
+          # 파일명에 공백이 있다(productName = "Sticky Notes"). URL 로 쓰려면 인코딩해야 한다.
+          $name = [System.Uri]::EscapeDataString($exe.Name)
+          $tag  = '${{ steps.ver.outputs.tag }}'
+          $url  = "https://github.com/${{ github.repository }}/releases/download/$tag/$name"
+
+          $manifest = [ordered]@{
+            version   = '${{ steps.ver.outputs.version }}'
+            notes     = "커밋 ${{ github.sha }} 자동 빌드"
+            pub_date  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            platforms = [ordered]@{
+              'windows-x86_64' = [ordered]@{ signature = $signature; url = $url }
+            }
+          }
+
+          $json = $manifest | ConvertTo-Json -Depth 5
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Get-Location) 'latest.json'),
+            $json,
+            (New-Object System.Text.UTF8Encoding($false)))
+          Write-Host $json
 
       - name: 릴리스 생성
         uses: softprops/action-gh-release@v2
@@ -146,5 +200,12 @@ jobs:
 
             > **정식 릴리스입니다.** 아래 NSIS 인스톨러(`.exe`)를 내려받아 설치하세요.
             > 설치는 사용자 단위(`currentUser`)이며 관리자 권한이 필요하지 않습니다.
-          files: src-tauri/target/release/bundle/nsis/*.exe
+            >
+            > 이미 설치돼 있다면 앱이 알아서 이 버전을 찾아 설치를 제안합니다
+            > (설정 창의 `UPDATE` 섹션에서 바로 확인할 수도 있습니다).
+          # `.sig` 와 `latest.json` 은 자동 업데이트가 쓰는 자산이다. 빠지면 업데이트가 멈춘다.
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/nsis/*.exe.sig
+            latest.json
           fail_on_unmatched_files: true

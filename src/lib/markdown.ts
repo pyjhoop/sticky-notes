@@ -106,9 +106,44 @@ function maskInlineCodeLine(line: string): string {
   return out
 }
 
-/** 펜스 블록 + 인라인 코드를 모두 마스킹한다. 추출 함수들이 쓰는 사본. */
+/** 공백 4칸(또는 탭) 들여쓰기로 시작하는 줄 */
+const INDENTED_RE = /^(?: {4}|\t)/
+
+/**
+ * 들여쓰기 코드블록을 마스킹한다.
+ *
+ * CommonMark 규칙을 그대로 옮기면 리스트 문맥까지 따라가야 하므로,
+ * **빈 줄(또는 문서 시작) 다음에 오는 4칸 들여쓰기 줄들의 연속**만 코드로 본다.
+ * 리스트 하위 항목(`- 상위` 바로 다음 줄의 들여쓰기)은 앞줄이 비어 있지 않으므로
+ * 코드로 오인하지 않는다.
+ */
+function maskIndentedCode(body: string): string {
+  const lines = body.split('\n')
+  let prevBlank = true
+  let inBlock = false
+
+  return lines
+    .map((line) => {
+      const isBlank = line.trim().length === 0
+      const indented = INDENTED_RE.test(line)
+
+      if (inBlock) {
+        // 빈 줄은 블록을 끊지 않는다 — 다음 들여쓰기 줄이 오면 계속 코드다.
+        if (!isBlank && !indented) inBlock = false
+      } else if (indented && prevBlank) {
+        inBlock = true
+      }
+
+      prevBlank = isBlank
+
+      return inBlock && !isBlank ? blank(line) : line
+    })
+    .join('\n')
+}
+
+/** 펜스 블록 + 들여쓰기 블록 + 인라인 코드를 모두 마스킹한다. 추출 함수들이 쓰는 사본. */
 export function maskCode(body: string): string {
-  return maskFencedCode(body)
+  return maskIndentedCode(maskFencedCode(body))
     .split('\n')
     .map(maskInlineCodeLine)
     .join('\n')

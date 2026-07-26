@@ -105,6 +105,16 @@ describe('#태그 추출', () => {
   it('슬래시 계층 태그를 지원한다', () => {
     expect(extractTags('#프로젝트/스프린트24')).toEqual(['프로젝트/스프린트24'])
   })
+
+  it('들여쓰기 코드블록 내부는 추출하지 않는다', () => {
+    const body = ['본문 #진짜', '', '    indented code // #가짜', '', '끝 #진짜2'].join('\n')
+    expect(extractTags(body)).toEqual(['진짜', '진짜2'])
+  })
+
+  it('리스트 하위 항목은 코드블록으로 오인하지 않는다', () => {
+    const body = ['- 상위', '    - 하위 #진짜'].join('\n')
+    expect(extractTags(body)).toEqual(['진짜'])
+  })
 })
 
 describe('[[위키링크]] 추출', () => {

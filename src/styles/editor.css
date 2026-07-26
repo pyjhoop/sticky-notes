@@ -1,0 +1,156 @@
+/*
+ * 메모 본문 에디터(CodeMirror 6) 라이브 프리뷰 스타일.
+ *
+ * 소유: 트랙 B (M3). `NoteEditor.tsx`가 import 한다.
+ * `global.css`는 다른 트랙 소유이므로 건드리지 않는다.
+ *
+ * 색·치수는 전부 `tokens.css` 변수다.
+ * 근거: design/Sticky Notes for Windows.dc.html (행 번호를 각 항목에 적어 둔다)
+ */
+
+/* ── 컨테이너 ───────────────────────────────────────────── */
+.cm-note-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cm-note-editor .cm-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── 태스크 (디자인 73~85행) ─────────────────────────────── */
+.cm-task-checkbox {
+  display: inline-grid;
+  place-items: center;
+  width: var(--checkbox);
+  height: var(--checkbox);
+  margin-right: 9px; /* 디자인 gap:9px */
+  vertical-align: -3px; /* 디자인 margin-top:2px 와 같은 시각 위치 */
+  border: var(--checkbox-border-w) solid var(--checkbox-border);
+  border-radius: var(--radius-checkbox);
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cm-task-checkbox-done {
+  border-color: var(--green-done);
+  background: var(--green-done);
+}
+
+.cm-task-checkbox-done::after {
+  content: '✓';
+  /* 디자인 74행 color:#fff */
+  color: var(--on-accent);
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* 완료된 할 일 — 취소선 + 흐린 잉크 (디자인 321~322행) */
+.cm-task-done {
+  color: var(--ink-dim);
+  text-decoration: line-through;
+}
+
+/* ── 제목 ───────────────────────────────────────────────── */
+.cm-heading {
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-title);
+  letter-spacing: var(--ls-title);
+}
+
+/* 디자인에 등장하는 제목 크기는 메모 제목 17px 하나뿐이다 (70행).
+   h3 이하는 본문 크기 + 굵게로 둔다 — 임의의 치수를 만들지 않기 위해서다. */
+.cm-h1,
+.cm-h2 {
+  font-size: var(--fs-note-title);
+}
+
+.cm-h3,
+.cm-h4,
+.cm-h5,
+.cm-h6 {
+  font-size: var(--fs-body);
+}
+
+/* ── 인라인 마커 ────────────────────────────────────────── */
+.cm-strong {
+  font-weight: var(--fw-bold);
+}
+
+.cm-em {
+  font-style: italic;
+}
+
+.cm-strike {
+  text-decoration: line-through;
+  color: var(--ink-dim);
+}
+
+/* 인라인 코드 (디자인 83행) */
+.cm-inline-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-inline-code);
+  background: var(--chip-bg);
+  border-radius: var(--radius-inline);
+  padding: 1px 5px;
+}
+
+/* ── 코드블록 (디자인 94~97행) ───────────────────────────── */
+.cm-code-line {
+  background: var(--code-bg);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: var(--lh-code);
+  padding-left: 13px;
+  padding-right: 13px;
+}
+
+.cm-code-line-first {
+  padding-top: 11px;
+  border-top-left-radius: var(--radius-code);
+  border-top-right-radius: var(--radius-code);
+}
+
+.cm-code-line-last {
+  padding-bottom: 11px;
+  border-bottom-left-radius: var(--radius-code);
+  border-bottom-right-radius: var(--radius-code);
+}
+
+/* 언어별 하이라이트 — 코드블록 안에서만 적용된다 */
+.cm-code-line .cm-hl-keyword {
+  color: var(--code-keyword);
+}
+
+.cm-code-line .cm-hl-string {
+  color: var(--code-fg);
+  opacity: 0.85;
+}
+
+.cm-code-line .cm-hl-comment {
+  color: var(--code-fg);
+  opacity: 0.5;
+  font-style: italic;
+}
+
+/* ── 위키링크 (디자인 91행) ──────────────────────────────── */
+.cm-wikilink {
+  color: var(--wikilink-fg);
+  background: var(--wikilink-bg);
+  border-radius: var(--radius-inline);
+  padding: 1px 4px;
+}
+
+/* ── 태그 (디자인 105~107행) ─────────────────────────────── */
+.cm-tag {
+  font-size: var(--fs-small);
+  background: var(--chip-bg);
+  color: var(--on-paper-strong);
+  border-radius: var(--radius-pill);
+  padding: 3px 8px;
+}

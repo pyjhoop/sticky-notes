@@ -1,12 +1,21 @@
 /**
- * 본문 에디터.
+ * 본문 에디터 — CodeMirror 6 라이브 프리뷰 (M3 · 트랙 B).
  *
- * **M0 스텁 — 내부는 textarea다.** 트랙 B(M3)가 CodeMirror 6 라이브 프리뷰로 교체한다.
- * 교체 시에도 이 `{ value, onChange }` 시그니처는 유지한다 —
- * 트랙 C의 `NoteWindow`가 이 계약에 의존한다.
+ * `{ value, onChange }` 시그니처는 M0 계약이다. 트랙 C의 `NoteWindow`가
+ * 이 계약에 의존하므로 바꾸지 않는다.
+ *
+ * CLAUDE.md 절대규칙 3 — `value`는 사용자가 친 마크다운 원문 그대로이고,
+ * 에디터 문서도 그 원문 그대로다. 라이브 프리뷰는 `Decoration`일 뿐이다.
  *
  * **소유: 트랙 B.**
  */
+
+import { EditorState } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import { useEffect, useRef } from 'react'
+
+import { createNoteEditorExtensions, externalUpdate } from '../editor'
+import '../styles/editor.css'
 
 export interface NoteEditorProps {
   /** 마크다운 원문. CodeMirror의 문서가 될 값이다 (CLAUDE.md 절대규칙 3) */
@@ -25,29 +34,53 @@ export default function NoteEditor({
   autoFocus = false,
   placeholder = '메모를 입력하세요',
 }: NoteEditorProps) {
-  // TODO(M3): 트랙 B — CodeMirror 6 + 라이브 프리뷰 확장으로 교체
-  return (
-    <textarea
-      className="selectable"
-      value={value}
-      autoFocus={autoFocus}
-      placeholder={placeholder}
-      spellCheck={false}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        flex: 1,
-        width: '100%',
-        minHeight: 0,
-        resize: 'none',
-        border: 0,
-        outline: 'none',
-        background: 'transparent',
-        color: 'var(--ink)',
-        fontFamily: 'var(--font-sans)',
-        fontSize: 'var(--fs-body)',
-        lineHeight: 'var(--lh-body)',
-        padding: 0,
-      }}
-    />
-  )
+  const host = useRef<HTMLDivElement | null>(null)
+  const viewRef = useRef<EditorView | null>(null)
+
+  // onChange 는 매 렌더 새 함수일 수 있다. 에디터를 다시 만들지 않으려고 ref로 받는다.
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+
+  // 최초 마운트에서만 EditorView를 만든다. value/placeholder 변화는 아래 effect가 처리한다.
+  const initialRef = useRef({ doc: value, placeholder, autoFocus })
+
+  useEffect(() => {
+    const parent = host.current
+    if (!parent) return
+    const initial = initialRef.current
+
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: initial.doc,
+        extensions: createNoteEditorExtensions({
+          placeholder: initial.placeholder,
+          onChange: (next) => onChangeRef.current(next),
+        }),
+      }),
+      parent,
+    })
+    viewRef.current = view
+    if (initial.autoFocus) view.focus()
+
+    return () => {
+      view.destroy()
+      viewRef.current = null
+    }
+  }, [])
+
+  // 바깥에서 value가 바뀐 경우(DB 로드 등)만 문서를 맞춘다.
+  // 사용자가 방금 친 내용이 되돌아가지 않도록 현재 문서와 다를 때만 dispatch 한다.
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    const current = view.state.doc.toString()
+    if (current === value) return
+    view.dispatch({
+      changes: { from: 0, to: current.length, insert: value },
+      // 외부 반영은 사용자 입력이 아니므로 onChange를 되쏘지 않는다.
+      annotations: externalUpdate.of(true),
+    })
+  }, [value])
+
+  return <div ref={host} className="cm-note-editor selectable" />
 }

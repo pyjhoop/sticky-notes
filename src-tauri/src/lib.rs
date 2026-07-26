@@ -6,6 +6,7 @@
 //! **이 파일은 M0 종료와 동시에 동결된다.** 어떤 트랙도 임의로 수정하지 않는다.
 //! 커맨드 추가/변경이 필요하면 작업을 멈추고 리더에게 보고한다.
 
+pub mod attachments;
 pub mod db;
 pub mod export;
 pub mod notes;
@@ -83,6 +84,9 @@ pub fn run() {
             export::backup_db,
             export::get_db_path,
             export::reveal_path,
+            // ── attachments.rs · 이미지 첨부 · M7 ───────────────────
+            attachments::save_attachment,
+            attachments::get_attachments_dir,
             // ── shortcuts.rs · 전역 단축키 · 트랙 C (M4) ────────────
             shortcuts::get_shortcuts,
             shortcuts::set_shortcut,

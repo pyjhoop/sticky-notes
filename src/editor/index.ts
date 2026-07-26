@@ -28,7 +28,7 @@ import {
 } from '@codemirror/view'
 
 import { buildInlineDecorations } from './inlineMarkers'
-import { imageAttachments, type AttachmentStore } from './images'
+import { buildImageDecorations, imageAttachments, type AttachmentStore } from './images'
 import { type DecoRange } from './shared'
 import { buildTaskDecorations } from './taskList'
 import { codeHighlightStyle, noteEditorTheme } from './theme'
@@ -39,6 +39,14 @@ export { buildWikilinkTagDecorations } from './wikilinkTag'
 export { buildTaskDecorations } from './taskList'
 export { buildInlineDecorations } from './inlineMarkers'
 export { taskMarkerToggle, TaskCheckboxWidget } from './taskList'
+export {
+  buildImageDecorations,
+  handlePaste,
+  imageFilesFrom,
+  imageInsertText,
+  insertPastedImages,
+  parseImageMarkdown,
+} from './images'
 export type { AttachmentStore } from './images'
 
 /**
@@ -54,10 +62,22 @@ export function buildDecorations(
   const out: DecoRange[] = []
   const seenFences = new Set<number>()
 
+  // 이미지가 먼저다 — `![](…)` 는 통째로 위젯이 되므로, 그 안쪽에 다른 모듈이
+  // 만든 `replace`(마커 숨김 등)가 겹치면 CodeMirror가 렌더 시점에 예외를 던진다.
+  const covered: Array<[number, number]> = []
   for (const { from, to } of ranges) {
-    buildTaskDecorations(state, from, to, out)
-    buildInlineDecorations(state, from, to, out, seenFences)
-    buildWikilinkTagDecorations(state, from, to, out)
+    buildImageDecorations(state, from, to, out, covered)
+  }
+
+  const rest: DecoRange[] = []
+  for (const { from, to } of ranges) {
+    buildTaskDecorations(state, from, to, rest)
+    buildInlineDecorations(state, from, to, rest, seenFences)
+    buildWikilinkTagDecorations(state, from, to, rest)
+  }
+  for (const deco of rest) {
+    if (covered.some(([a, b]) => deco.from >= a && deco.to <= b)) continue
+    out.push(deco)
   }
 
   // sort=true — 모듈별로 순서 없이 넣어도 RangeSet이 정렬한다.
@@ -101,7 +121,7 @@ export interface NoteEditorOptions {
   onChange?: (value: string) => void
   /** 빈 문서에 보여줄 안내 문구 */
   placeholder?: string
-  /** M7 이미지 첨부 — 지금은 넘겨도 무시된다 */
+  /** M7 이미지 첨부. 없으면 붙여넣기가 기본 동작(텍스트)으로 흐른다 */
   attachments?: AttachmentStore
 }
 

@@ -67,7 +67,8 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          $version = "0.1.$env:GITHUB_RUN_NUMBER"
+          # M7 이후 정식 릴리스 — 1.0.<run_number> (plan.md "CI/CD").
+          $version = "1.0.$env:GITHUB_RUN_NUMBER"
           Write-Host "version = $version"
 
           $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -133,13 +134,13 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: ${{ steps.ver.outputs.tag }}
-          # v1.0.0(M7 정식 릴리스) 전까지는 prerelease 로 표시한다.
-          prerelease: true
+          # M7 완료로 정식 릴리스 전환 (plan.md "CI/CD" 절).
+          prerelease: false
           generate_release_notes: true
           body: |
             `main` 자동 빌드 — 커밋 ${{ github.sha }}
 
-            > **개발 중 프리릴리스입니다.** 전체 마일스톤(M7) 완료 전까지 기능이 일부 미구현일 수 있습니다.
+            > **정식 릴리스입니다.** 아래 NSIS 인스톨러(`.exe`)를 내려받아 설치하세요.
             > 설치는 사용자 단위(`currentUser`)이며 관리자 권한이 필요하지 않습니다.
           files: src-tauri/target/release/bundle/nsis/*.exe
           fail_on_unmatched_files: true

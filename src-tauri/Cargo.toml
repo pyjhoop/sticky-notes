@@ -1,6 +1,6 @@
 [package]
 name = "sticky-notes"
-version = "0.1.0"
+version = "1.0.0"
 description = "윈도우용 스티커 메모"
 authors = ["sticky-notes"]
 edition = "2021"

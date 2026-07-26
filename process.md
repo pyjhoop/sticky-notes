@@ -282,6 +282,9 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-07-26 | `src/lib/ipc.ts` | `getShortcutFailures` 의미 확장 (등록 실패 + **기본값 폴백**) | 통합 게이트 #2. 저장된 단축키가 안 먹혀 기본값으로 되돌린 경우도 사용자에게 알려야 한다. 타입은 그대로(`ShortcutBinding[]`), 담기는 조건만 넓어졌다 |
 | 2026-07-26 | `src-tauri/tauri.conf.json` | 메모 창 `width` 484→**436**, `height` 468→**420**, `minWidth` 288→**240**, `minHeight` 208→**160** | 사용자 결함 신고 #2 — "메모장 겉의 검정 레이아웃을 없애라". 창 = 종이 + 사방 24px 투명 여백 구조를 폐기하고 **창 = 종이**로 바꿨다. 여백 48px이 사라졌으므로 창 크기도 그만큼 줄인다. 근거·진단은 `src/styles/note.css` 머리말 |
 | 2026-07-26 | `src/styles/tokens.css` | `--note-margin: 24px` **삭제** → `--note-grab: 6px` / `--note-grab-corner: 8px` **추가**, `--note-height: 420px` 추가 | 위와 같은 건. 리사이즈 그랩 존이 투명 여백에 있었으므로 종이 가장자리 **안쪽**으로 옮기면서 치수를 토큰화했다. `--shadow-note`는 정의만 남고 사용처 0 (디자인 기록용) |
+| 2026-07-26 | `src-tauri/src/lib.rs` | `pub mod attachments;` + `attachments::save_attachment` `attachments::get_attachments_dir` **등록** | M7 이미지 첨부. 새 모듈이라 기존 커맨드 시그니처 불변 |
+| 2026-07-26 | `src/lib/ipc.ts` | `saveAttachment()` `getAttachmentsDir()` **추가** (파일 끝) | 위 커맨드 2개의 래퍼. `saveAttachment`만 raw IPC 바디(`invoke(cmd, bytes, {headers})`)를 쓰므로 `call()`을 거치지 않는다 — 수 MB 스크린샷을 JSON 숫자 배열로 보내면 붙여넣기마다 멈춘다. 순수 추가 |
+| 2026-07-26 | `src-tauri/tauri.conf.json` | `version` `0.1.0` → `1.0.0` | M7 정식 릴리스 전환. `package.json`·`Cargo.toml`도 동일. CI는 빌드 시 `1.0.<run_number>`를 주입한다 (plan.md "CI/CD") |
 
 ### 계약을 바꿔야 할 때
 

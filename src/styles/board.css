@@ -194,6 +194,30 @@ body:not([data-backdrop]) .dark-window {
   padding: 12px var(--board-pad);
 }
 
+/* ── 실패 알림 ────────────────────────────────────────────
+ * 백엔드 호출이 실패하면 조용히 넘기지 않는다 (CLAUDE.md "흔한 함정").
+ * 설정 창의 `.settings__notice`와 같은 톤이다.
+ */
+.board__notice {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 var(--board-pad);
+  padding: 9px 12px;
+  border-radius: var(--radius-field);
+  background: var(--dark-field-bg);
+  border: 1px solid var(--dark-border);
+  color: var(--yellow-saving);
+  font-size: var(--fs-small);
+}
+
+.board__notice-text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
 .board__search {
   flex: 1;
   max-width: 320px;

@@ -1,22 +1,21 @@
 /**
- * 계약 파일 — M0 동결
+ * 계약 파일 — 커맨드 TypeScript 타입 + invoke 래퍼
  *
- * `src-tauri/src/lib.rs`의 `invoke_handler`에 등록된 모든 커맨드의
- * TypeScript 타입 + invoke 래퍼.
+ * `src-tauri/src/lib.rs`의 `invoke_handler`에 등록된 모든 커맨드와 1:1이다.
  *
  * ─────────────────────────────────────────────────────────────
- * 개발 중 폴백에 대하여
+ * 폴백은 없다 (통합 게이트에서 제거)
  *
- * 백엔드 커맨드는 M2(트랙 A)/M4(트랙 C)까지 미구현 상태다.
- * 트랙 B/C/D가 프론트만으로 개발을 진행할 수 있도록,
- * invoke가 실패하면 **더미 데이터를 돌려주는 폴백**을 둔다.
+ * M0~M4 동안에는 백엔드가 미완이라 invoke 실패 시 더미 데이터를 돌려주는 폴백이
+ * 있었다. 트랙 A/C 병합으로 실데이터가 흐르므로 **전량 제거했다** —
+ * 백엔드 에러가 조용히 삼켜지면 화면에 더미가 뜨고 디버깅이 불가능해진다.
  *
- * 폴백은 전부 `withFallback(...)`을 거치고 `// TODO(M2): 트랙 A 완료 시 제거`
- * 주석이 붙어 있다. 통합 게이트에서 이 주석을 전량 검색해 제거한다.
+ * 이제 모든 래퍼는 실패 시 `IpcError`를 던진다. **호출부가 반드시 잡아서
+ * 사용자에게 한국어로 보여준다** (`src/lib/errors.ts`의 `failureNotice`).
  * ─────────────────────────────────────────────────────────────
  *
- * 이 파일은 M0 종료와 동시에 동결된다.
- * 커맨드 추가/시그니처 변경이 필요하면 작업을 멈추고 리더에게 보고한다.
+ * 이 파일은 트랙 간 계약이다. 시그니처를 바꾸면 `process.md`의
+ * "계약 변경 이력"에 반드시 한 줄 남긴다.
  */
 
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
@@ -110,7 +109,14 @@ export interface WorkArea {
   isPrimary: boolean
 }
 
-/** 설정 창의 DISPLAY / DATA 값. */
+/**
+ * 설정 창의 DISPLAY / DATA 값 + 저장된 단축키.
+ *
+ * 단축키 3개가 여기 있는 이유: `set_shortcut`이 `settings` 테이블에 쓰기만 하고
+ * **읽는 경로가 없어** 재시작하면 재바인딩이 사라졌다. `Settings`의 필드로 만들면
+ * 쓰기(`set_setting`)·읽기(`get_settings`)가 한 경로로 맞물리고,
+ * `shortcuts::init`이 시작 시 저장된 값을 그대로 등록할 수 있다.
+ */
 export interface Settings {
   alwaysOnTop: boolean
   autoFade: boolean
@@ -122,6 +128,12 @@ export interface Settings {
   filenameDatePrefix: boolean
   exportDir: string | null
   autostart: boolean
+  /** 저장된 `새 메모` 단축키. 기본 `Ctrl+Alt+N` */
+  shortcutNewNote: string
+  /** 저장된 `모든 메모 보기` 단축키. 기본 `Ctrl+Alt+M` */
+  shortcutShowBoard: string
+  /** 저장된 `항상 위 전환` 단축키. 기본 `Ctrl+Alt+T` */
+  shortcutToggleAlwaysOnTop: string
 }
 
 export interface ExportResult {
@@ -131,6 +143,16 @@ export interface ExportResult {
 }
 
 export type ShortcutAction = 'newNote' | 'showBoard' | 'toggleAlwaysOnTop'
+
+/**
+ * 단축키 동작 → `settings` 테이블 key.
+ * `src-tauri/src/shortcuts.rs`의 `setting_key()`와 **글자까지 같아야 한다**.
+ */
+export const SHORTCUT_SETTING_KEY: Record<ShortcutAction, keyof Settings> = {
+  newNote: 'shortcutNewNote',
+  showBoard: 'shortcutShowBoard',
+  toggleAlwaysOnTop: 'shortcutToggleAlwaysOnTop',
+}
 
 export interface ShortcutBinding {
   action: ShortcutAction
@@ -178,190 +200,49 @@ async function call<T>(command: string, args?: Record<string, unknown>): Promise
   }
 }
 
-// TODO(M2): 트랙 A/C 완료 시 이 폴백 전체를 제거한다.
-//           통합 게이트에서 `withFallback` 검색 결과가 0이어야 한다.
-const fallbackWarned = new Set<string>()
-
-/**
- * 백엔드가 아직 `미구현` 에러를 돌려주는 동안 프론트가 죽지 않게 한다.
- *
- * TODO(M2): 트랙 A 완료 시 제거 — `call()`을 직접 쓰도록 바꾼다.
- */
-async function withFallback<T>(
-  command: string,
-  args: Record<string, unknown> | undefined,
-  dummy: () => T,
-): Promise<T> {
-  try {
-    return await call<T>(command, args)
-  } catch (e) {
-    if (!fallbackWarned.has(command)) {
-      fallbackWarned.add(command)
-      console.warn(`[ipc] ${command} 폴백 — 더미 데이터를 사용합니다.`, e)
-    }
-    return dummy()
-  }
-}
-
 // ─────────────────────────────────────────────────────────────
-// 더미 데이터 (개발용)
-// TODO(M2): 트랙 A 완료 시 제거
-// ─────────────────────────────────────────────────────────────
-
-const DUMMY_BODY = `# 스프린트 24 · 릴리스 체크
-
-- [x] 설치 관리자 서명 인증서 갱신
-- [ ] 투명도 슬라이더 GPU 합성 이슈 확인
-- [ ] 볼트 충돌 시 \`conflict-{ts}.md\` 생성
-
-창 위치는 **모니터 DPI 기준 상대 좌표**로 저장. 관련 노트는 [[릴리스 절차]] 참고.
-
-\`\`\`rust
-SetWindowPos(hwnd, HWND_TOPMOST,
-    0, 0, 0, 0, SWP_NOMOVE);
-\`\`\`
-
-#릴리스 #win32 #급함
-`
-
-function dummyNote(id = 'spike'): Note {
-  const now = new Date().toISOString()
-  return {
-    id,
-    title: '스프린트 24 · 릴리스 체크',
-    body: DUMMY_BODY,
-    color: 0,
-    opacity: 96,
-    pinned: true,
-    open: true,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-  }
-}
-
-/** 디자인 `boardNotes` 8장 — 메타 문구는 v1 해석(상대 시각)으로 바꿨다. */
-function dummySummaries(): NoteSummary[] {
-  const now = Date.now()
-  const iso = (minutesAgo: number) => new Date(now - minutesAgo * 60_000).toISOString()
-  const rows: Array<{
-    id: string
-    title: string
-    preview: string
-    color: ColorIndex
-    minutes: number
-    tags: string[]
-  }> = [
-    { id: 'n1', title: '오늘', preview: '디자인 리뷰 11:00 · 옵시디언 플러그인 문서 · 전기요금 자동이체', color: 0, minutes: 1, tags: ['일간'] },
-    { id: 'n2', title: '전화 · 김PM', preview: 'API 키 만료 건 → 목요일까지 회신', color: 1, minutes: 120, tags: [] },
-    { id: 'n3', title: '단축키', preview: 'Ctrl+Alt+N 새 메모 / Ctrl+Shift+휠 투명도', color: 2, minutes: 60 * 26, tags: [] },
-    { id: 'n4', title: '장보기', preview: '커피 원두, 우유, 파스타면', color: 3, minutes: 60 * 50, tags: [] },
-    { id: 'n5', title: '스프린트 24', preview: '설치 관리자 서명 인증서 갱신 · 볼트 충돌 처리', color: 4, minutes: 8, tags: ['릴리스', 'win32'] },
-    { id: 'n6', title: '읽을거리', preview: '[[윈도우 합성기]] · DWM 투명도 문서', color: 0, minutes: 60 * 24 * 3, tags: [] },
-    { id: 'n7', title: '인용', preview: '"창은 도구여야지 목적지가 아니다"', color: 2, minutes: 60 * 24 * 8, tags: [] },
-    { id: 'n8', title: '아이디어', preview: '메모를 모니터 가장자리에 스냅해 도킹', color: 1, minutes: 60 * 24 * 12, tags: [] },
-  ]
-  return rows.map(({ id, title, preview, color, minutes, tags }) => ({
-    id,
-    title,
-    preview,
-    color,
-    open: id === 'n1',
-    pinned: true,
-    updatedAt: iso(minutes),
-    tags,
-  }))
-}
-
-function dummySettings(): Settings {
-  return {
-    alwaysOnTop: true,
-    autoFade: true,
-    defaultOpacity: 96,
-    accent: '#0067C0',
-    filenameDatePrefix: false,
-    exportDir: null,
-    autostart: false,
-  }
-}
-
-function dummyShortcuts(): ShortcutBinding[] {
-  return [
-    { action: 'newNote', accelerator: 'Ctrl+Alt+N', registered: false, error: '개발 중 — 미등록' },
-    { action: 'showBoard', accelerator: 'Ctrl+Alt+M', registered: false, error: '개발 중 — 미등록' },
-    { action: 'toggleAlwaysOnTop', accelerator: 'Ctrl+Alt+T', registered: false, error: '개발 중 — 미등록' },
-  ]
-}
-
-// ─────────────────────────────────────────────────────────────
-// notes — 트랙 A (M2)
+// notes
 // ─────────────────────────────────────────────────────────────
 
 export function createNote(color?: ColorIndex): Promise<Note> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('create_note', { color }, () => dummyNote(`dev-${Date.now()}`))
+  return call('create_note', { color })
 }
 
 export function getNote(id: string): Promise<Note | null> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('get_note', { id }, () => dummyNote(id))
+  return call('get_note', { id })
 }
 
 export function listNotes(includeDeleted = false): Promise<NoteSummary[]> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('list_notes', { includeDeleted }, dummySummaries)
+  return call('list_notes', { includeDeleted })
 }
 
 /** body/title/tags/links/updatedAt을 한 트랜잭션에서 갱신한다. */
 export function saveNote(id: string, body: string): Promise<SaveResult> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('save_note', { id, body }, () => ({
-    id,
-    title: body.split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '').slice(0, 80) ?? '제목 없음',
-    updatedAt: new Date().toISOString(),
-    tags: [],
-    links: [],
-  }))
+  return call('save_note', { id, body })
 }
 
 export function setNoteMeta(id: string, meta: NoteMeta): Promise<Note> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('set_note_meta', { id, meta }, () => ({ ...dummyNote(id), ...meta }))
+  return call('set_note_meta', { id, meta })
 }
 
 export function softDeleteNote(id: string): Promise<void> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('soft_delete_note', { id }, () => undefined)
+  return call('soft_delete_note', { id })
 }
 
 export function searchNotes(query: SearchQuery): Promise<NoteSummary[]> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('search_notes', { query }, () => {
-    const all = dummySummaries()
-    const term = query.term.trim().toLowerCase()
-    const byColor = query.colors.length
-      ? all.filter((n) => query.colors.includes(n.color))
-      : all
-    if (!term) return byColor
-    if (query.mode === 'tag') return byColor.filter((n) => n.tags.some((t) => t.includes(term)))
-    return byColor.filter(
-      (n) => n.title.toLowerCase().includes(term) || n.preview.toLowerCase().includes(term),
-    )
-  })
+  return call('search_notes', { query })
 }
 
 // ─────────────────────────────────────────────────────────────
-// settings — 트랙 A (M2)
+// settings
 // ─────────────────────────────────────────────────────────────
 
 export function getSettings(): Promise<Settings> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('get_settings', undefined, dummySettings)
+  return call('get_settings')
 }
 
 export function setSetting(key: keyof Settings, value: string): Promise<void> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('set_setting', { key, value }, () => undefined)
+  return call('set_setting', { key, value })
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -374,8 +255,7 @@ export function openNoteWindow(id: string): Promise<void> {
 
 /** 메모를 새로 만들고 창까지 띄운다. 반환값은 새 메모의 id. */
 export function newNoteWindow(color?: ColorIndex): Promise<string> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('new_note_window', { color }, () => `dev-${Date.now()}`)
+  return call('new_note_window', { color })
 }
 
 export function focusNoteWindow(id: string): Promise<void> {
@@ -392,8 +272,7 @@ export function listOpenNotes(): Promise<string[]> {
 }
 
 export function restoreOpenNotes(): Promise<string[]> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('restore_open_notes', undefined, () => [])
+  return call('restore_open_notes')
 }
 
 export function setNoteAlwaysOnTop(id: string, pinned: boolean): Promise<void> {
@@ -418,13 +297,11 @@ export function showSettingsWindow(): Promise<void> {
 }
 
 export function saveNoteGeometry(noteId: string, geometry: Geometry): Promise<void> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('save_note_geometry', { noteId, geometry }, () => undefined)
+  return call('save_note_geometry', { noteId, geometry })
 }
 
 export function loadNoteGeometry(noteId: string): Promise<Geometry | null> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('load_note_geometry', { noteId }, () => null)
+  return call('load_note_geometry', { noteId })
 }
 
 /** 트레이 "모든 메모 저장" — 열린 메모 창에 flush를 요청한다. */
@@ -437,18 +314,7 @@ export function requestSaveAll(): Promise<void> {
 // ─────────────────────────────────────────────────────────────
 
 export function getWorkAreas(): Promise<WorkArea[]> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거 (브라우저 개발 모드 대비)
-  return withFallback('get_work_areas', undefined, () => [
-    {
-      name: '\\\\.\\DISPLAY1',
-      x: 0,
-      y: 0,
-      width: 1920,
-      height: 1040,
-      scale: 1,
-      isPrimary: true,
-    },
-  ])
+  return call('get_work_areas')
 }
 
 /**
@@ -465,8 +331,7 @@ export function setWindowCornerPreference(rounded: boolean): Promise<void> {
 }
 
 export function applyWindowBackdrop(): Promise<Backdrop> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback('apply_window_backdrop', undefined, () => 'opaque' as Backdrop)
+  return call('apply_window_backdrop')
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -482,12 +347,7 @@ export function backupDb(dir?: string): Promise<string> {
 }
 
 export function getDbPath(): Promise<string> {
-  // TODO(M2): 트랙 A 완료 시 폴백 제거
-  return withFallback(
-    'get_db_path',
-    undefined,
-    () => '%APPDATA%\\com.sticky-notes.app\\sticky-notes.db',
-  )
+  return call('get_db_path')
 }
 
 /** 탐색기에서 경로를 연다. */
@@ -500,8 +360,7 @@ export function revealPath(path: string): Promise<void> {
 // ─────────────────────────────────────────────────────────────
 
 export function getShortcuts(): Promise<ShortcutBinding[]> {
-  // TODO(M4): 트랙 C 완료 시 폴백 제거
-  return withFallback('get_shortcuts', undefined, dummyShortcuts)
+  return call('get_shortcuts')
 }
 
 export function setShortcut(
@@ -511,15 +370,19 @@ export function setShortcut(
   return call('set_shortcut', { action, accelerator })
 }
 
-/** 등록 실패 목록. **비어 있지 않으면 반드시 사용자에게 노출한다.** */
+/**
+ * 사용자 확인이 필요한 단축키 목록. **비어 있지 않으면 반드시 노출한다.**
+ *
+ * 두 가지가 섞여 온다:
+ * - `registered: false` — 등록 자체가 실패했다 (동작하지 않는다)
+ * - `registered: true` + `error` — 저장된 값이 안 먹혀 **기본값으로 되돌렸다**
+ */
 export function getShortcutFailures(): Promise<ShortcutBinding[]> {
-  // TODO(M4): 트랙 C 완료 시 폴백 제거
-  return withFallback('get_shortcut_failures', undefined, () => [])
+  return call('get_shortcut_failures')
 }
 
 export function getAutostart(): Promise<boolean> {
-  // TODO(M4): 트랙 C 완료 시 폴백 제거
-  return withFallback('get_autostart', undefined, () => false)
+  return call('get_autostart')
 }
 
 export function setAutostart(enabled: boolean): Promise<boolean> {

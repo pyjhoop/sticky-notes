@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import TitleBar from '../components/TitleBar'
 import Toggle from '../components/Toggle'
+import { failureNotice } from '../lib/errors'
 import { ACCENTS, clampOpacity, OPACITY_MAX, OPACITY_MIN, type Accent } from '../lib/palette'
 import { formatDatePrefix } from '../lib/time'
 import {
@@ -68,33 +69,43 @@ export default function SettingsWindow() {
       .then((b) => {
         document.body.dataset.backdrop = b
       })
-      .catch((e) => console.warn('[settings] apply_window_backdrop 실패', e))
+      .catch(() => {
+        // 폴백 체인의 마지막 단계. 화면은 정상이므로 알리지 않는다.
+        document.body.dataset.backdrop = 'opaque'
+      })
   }, [])
 
+  // 초기 로드 — 실패는 전부 배너로 보여준다 (ipc 폴백 제거로 더미가 뜨지 않는다)
   useEffect(() => {
     getSettings()
       .then((s) => {
         setSettings(s)
         document.documentElement.style.setProperty('--accent', s.accent)
       })
-      .catch((e) => console.warn('[settings] get_settings 실패', e))
+      .catch((e) => setNotice({ text: failureNotice('설정을 불러오지 못했습니다', e), warn: true }))
     getDbPath()
       .then(setDbPath)
-      .catch((e) => console.warn('[settings] get_db_path 실패', e))
+      .catch((e) =>
+        setNotice({ text: failureNotice('DB 경로를 불러오지 못했습니다', e), warn: true }),
+      )
     getShortcuts()
       .then(setShortcuts)
-      .catch((e) => console.warn('[settings] get_shortcuts 실패', e))
+      .catch((e) =>
+        setNotice({ text: failureNotice('단축키를 불러오지 못했습니다', e), warn: true }),
+      )
     getShortcutFailures()
       .then(setFailures)
-      .catch((e) => console.warn('[settings] get_shortcut_failures 실패', e))
+      .catch(() => {
+        // getShortcuts가 이미 같은 사유로 실패했다 — 배너를 덮어쓰지 않는다.
+      })
   }, [])
 
-  /** 로컬 상태를 먼저 반영하고 백엔드에 흘린다. */
+  /** 로컬 상태를 먼저 반영하고 백엔드에 흘린다. 저장 실패는 배너로 알린다. */
   const patch = useCallback(
     <K extends keyof Settings>(key: K, value: Settings[K]) => {
       setSettings((prev) => (prev ? { ...prev, [key]: value } : prev))
       setSetting(key, String(value)).catch((e) =>
-        console.warn(`[settings] set_setting(${String(key)}) 실패`, e),
+        setNotice({ text: failureNotice('설정을 저장하지 못했습니다', e), warn: true }),
       )
     },
     [],
@@ -114,7 +125,7 @@ export default function SettingsWindow() {
     try {
       await revealPath(dbPath)
     } catch (e) {
-      setNotice({ text: `폴더를 열지 못했습니다: ${String(e)}`, warn: true })
+      setNotice({ text: failureNotice('폴더를 열지 못했습니다', e), warn: true })
     }
   }
 
@@ -124,7 +135,7 @@ export default function SettingsWindow() {
       const path = await backupDb()
       setNotice({ text: `백업을 만들었습니다 · ${path}` })
     } catch (e) {
-      setNotice({ text: `백업에 실패했습니다: ${String(e)}`, warn: true })
+      setNotice({ text: failureNotice('백업에 실패했습니다', e), warn: true })
     } finally {
       setBusy(false)
     }
@@ -135,7 +146,7 @@ export default function SettingsWindow() {
       const dir = await pickDirectory('내보낼 폴더 선택')
       if (dir) patch('exportDir', dir)
     } catch (e) {
-      setNotice({ text: `폴더를 선택하지 못했습니다: ${String(e)}`, warn: true })
+      setNotice({ text: failureNotice('폴더를 선택하지 못했습니다', e), warn: true })
     }
   }
 
@@ -153,7 +164,7 @@ export default function SettingsWindow() {
       const skipped = result.skipped.length > 0 ? ` · 건너뜀 ${result.skipped.length}개` : ''
       setNotice({ text: `${result.count}개를 내보냈습니다 · ${result.dir}${skipped}` })
     } catch (e) {
-      setNotice({ text: `내보내기에 실패했습니다: ${String(e)}`, warn: true })
+      setNotice({ text: failureNotice('내보내기에 실패했습니다', e), warn: true })
     } finally {
       setBusy(false)
     }
@@ -174,7 +185,7 @@ export default function SettingsWindow() {
       setShortcuts((prev) => prev.map((s) => (s.action === action ? updated : s)))
       setFailures((prev) => {
         const rest = prev.filter((s) => s.action !== action)
-        return updated.registered ? rest : [...rest, updated]
+        return updated.registered && !updated.error ? rest : [...rest, updated]
       })
       if (!updated.registered) {
         setNotice({
@@ -184,7 +195,7 @@ export default function SettingsWindow() {
       }
     } catch (e) {
       setNotice({
-        text: `${ACTION_LABEL[action]} 단축키를 바꾸지 못했습니다: ${String(e)}`,
+        text: failureNotice(`${ACTION_LABEL[action]} 단축키를 바꾸지 못했습니다`, e),
         warn: true,
       })
     }
@@ -200,7 +211,7 @@ export default function SettingsWindow() {
       <div className="settings__body">
         {failures.length > 0 && (
           <div className="settings__notice settings__notice--warn">
-            {`단축키 ${failures.length}개가 등록되지 않았습니다 — ${failures
+            {`단축키 ${failures.length}개를 확인하세요 — ${failures
               .map((f) => `${ACTION_LABEL[f.action]}(${f.accelerator})`)
               .join(', ')}. 다른 앱과 충돌했을 수 있습니다. 아래에서 다시 지정하세요.`}
           </div>
@@ -348,6 +359,8 @@ export default function SettingsWindow() {
                     등록 실패 — {s.error ?? '다른 앱과 충돌했을 수 있습니다'}
                   </div>
                 )}
+                {/* 등록은 됐지만 저장된 값이 아니라 기본값으로 되돌아간 경우 */}
+                {s.registered && s.error && <div className="settings__error">{s.error}</div>}
               </div>
               <input
                 className="settings__accel"

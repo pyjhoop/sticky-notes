@@ -218,6 +218,11 @@
   background: var(--yellow-saving);
 }
 
+/* 백엔드 호출 실패 — 경고(노랑)보다 강한 오류(빨강). 디자인의 닫기 빨강을 쓴다. */
+.note-alert--error .note-alert__dot {
+  background: var(--red-close);
+}
+
 .note-alert__text {
   flex: 1;
   min-width: 0;

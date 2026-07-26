@@ -19,6 +19,7 @@ import ColorPalette from '../components/ColorPalette'
 import ControlBar from '../components/ControlBar'
 import NoteEditor from '../components/NoteEditor'
 import SaveFooter, { type SaveStatus } from '../components/SaveFooter'
+import { failureNotice } from '../lib/errors'
 import {
   clampOpacity,
   normalizeColor,
@@ -33,7 +34,6 @@ import {
   getShortcutFailures,
   isTauri,
   newNoteWindow,
-  openNoteWindow,
   saveNote,
   setNoteAlwaysOnTop,
   setNoteMeta,
@@ -103,6 +103,8 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [failures, setFailures] = useState<ShortcutBinding[]>([])
   const [alertDismissed, setAlertDismissed] = useState(false)
+  // 백엔드 호출 실패 — 조용히 넘기지 않는다 (ipc 폴백 제거 · CLAUDE.md "흔한 함정")
+  const [error, setError] = useState<string | null>(null)
 
   // ── 본문 저장 (400ms 디바운스 + 강제 flush) ─────────────
   const bodyRef = useRef('')
@@ -122,10 +124,12 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
       setTitle(result.title)
       setSavedAt(new Date(result.updatedAt))
       setStatus('saved')
+      setError(null)
     } catch (e) {
-      // 저장 실패는 `저장 중`(노랑)으로 남겨 사용자가 알아챌 수 있게 한다.
+      // 저장 실패는 `저장 중`(노랑)으로 남기고 배너로도 알린다.
+      // 푸터 점만으로는 "느린 저장"과 구분되지 않는다.
       dirtyRef.current = true
-      console.error('[note] 저장 실패', e)
+      setError(failureNotice('저장하지 못했습니다', e))
     }
   }, [noteId])
 
@@ -156,7 +160,9 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
       metaTimer.current = window.setTimeout(() => {
         const next = pendingMeta.current
         pendingMeta.current = {}
-        void setNoteMeta(noteId, next)
+        setNoteMeta(noteId, next).catch((e) =>
+          setError(failureNotice('색·투명도를 저장하지 못했습니다', e)),
+        )
       }, META_DEBOUNCE_MS)
     },
     [noteId],
@@ -165,23 +171,39 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   // ── 초기 로드 ───────────────────────────────────────────
   useEffect(() => {
     let alive = true
-    void getNote(noteId).then((note) => {
-      if (!alive || !note) return
-      setBody(note.body)
-      bodyRef.current = note.body
-      setTitle(note.title)
-      setColor(normalizeColor(note.color))
-      if (opacityOverride === null) setOpacity(clampOpacity(note.opacity))
-      setPinned(note.pinned)
-      setSavedAt(new Date(note.updatedAt))
-    })
-    void getSettings().then((s) => {
-      if (alive) setAutoFade(s.autoFade)
-    })
+    getNote(noteId)
+      .then((note) => {
+        if (!alive) return
+        if (!note) {
+          setError(`메모를 찾을 수 없습니다 — id: ${noteId}`)
+          return
+        }
+        setBody(note.body)
+        bodyRef.current = note.body
+        setTitle(note.title)
+        setColor(normalizeColor(note.color))
+        if (opacityOverride === null) setOpacity(clampOpacity(note.opacity))
+        setPinned(note.pinned)
+        setSavedAt(new Date(note.updatedAt))
+      })
+      .catch((e) => {
+        if (alive) setError(failureNotice('메모를 불러오지 못했습니다', e))
+      })
+    getSettings()
+      .then((s) => {
+        if (alive) setAutoFade(s.autoFade)
+      })
+      .catch((e) => {
+        if (alive) setError(failureNotice('설정을 불러오지 못했습니다', e))
+      })
     // 단축키 등록 실패는 조용히 넘기지 않는다 (M4 DoD · CLAUDE.md "흔한 함정")
-    void getShortcutFailures().then((f) => {
-      if (alive) setFailures(f)
-    })
+    getShortcutFailures()
+      .then((f) => {
+        if (alive) setFailures(f)
+      })
+      .catch((e) => {
+        if (alive) setError(failureNotice('단축키 상태를 확인하지 못했습니다', e))
+      })
     return () => {
       alive = false
     }
@@ -282,7 +304,9 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
   const onTogglePin = useCallback(() => {
     setPinned((prev) => {
       const next = !prev
-      void setNoteAlwaysOnTop(noteId, next).catch(() => undefined)
+      setNoteAlwaysOnTop(noteId, next).catch((e) =>
+        setError(failureNotice('항상 위 설정을 바꾸지 못했습니다', e)),
+      )
       pushMeta({ pinned: next })
       return next
     })
@@ -308,16 +332,23 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
 
   const onNewNote = useCallback(() => {
     void (async () => {
-      const id = await newNoteWindow(color)
-      // 백엔드가 창까지 띄우면 두 번째 호출은 포커스만 준다 (멱등).
-      await openNoteWindow(id).catch(() => undefined)
+      try {
+        // 백엔드가 메모를 만들면서 창까지 띄운다.
+        await newNoteWindow(color)
+      } catch (e) {
+        setError(failureNotice('새 메모를 만들지 못했습니다', e))
+      }
     })()
   }, [color])
 
   const onClose = useCallback(() => {
     void (async () => {
       await flushRef.current()
-      await closeNoteWindow(noteId).catch(() => undefined)
+      try {
+        await closeNoteWindow(noteId)
+      } catch (e) {
+        setError(failureNotice('창을 닫지 못했습니다', e))
+      }
     })()
   }, [noteId])
 
@@ -382,11 +413,27 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
             <NoteEditor value={body} onChange={onEditorChange} />
           </div>
 
+          {error && (
+            <div className="note-alert note-alert--error" role="alert">
+              <span className="note-alert__dot" />
+              <span className="note-alert__text">{error}</span>
+              <button
+                type="button"
+                className="note-alert__dismiss"
+                onClick={() => setError(null)}
+              >
+                닫기
+              </button>
+            </div>
+          )}
+
           {showAlert && (
             <div className="note-alert" role="alert">
               <span className="note-alert__dot" />
               <span className="note-alert__text">
-                전역 단축키를 등록하지 못했습니다. 다른 앱이 사용 중일 수 있습니다.
+                {failures.some((f) => !f.registered)
+                  ? '전역 단축키를 등록하지 못했습니다. 다른 앱이 사용 중일 수 있습니다.'
+                  : '저장된 단축키를 쓸 수 없어 기본값으로 되돌렸습니다.'}
                 <span className="note-alert__keys">
                   {failures.map((f) => f.accelerator).join(' · ')}
                 </span>

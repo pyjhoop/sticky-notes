@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import TitleBar from '../components/TitleBar'
 import { PALETTE, type ColorIndex } from '../lib/palette'
+import { failureNotice } from '../lib/errors'
 import { formatRelative } from '../lib/time'
 import {
   applyWindowBackdrop,
@@ -62,14 +63,19 @@ export default function BoardWindow() {
   const [colors, setColors] = useState<ColorIndex[]>([])
   const [menu, setMenu] = useState<ContextMenu | null>(null)
   const [tick, setTick] = useState(0)
+  // 백엔드 호출 실패는 조용히 넘기지 않는다 (ipc 폴백 제거 · CLAUDE.md "흔한 함정")
+  const [notice, setNotice] = useState<string | null>(null)
   const searchSeq = useRef(0)
 
   const parsed = useMemo(() => parseSearch(raw), [raw])
 
   const refreshStats = useCallback(() => {
     listNotes()
-      .then(setAll)
-      .catch((e) => console.warn('[board] list_notes 실패', e))
+      .then((rows) => {
+        setAll(rows)
+        setNotice(null)
+      })
+      .catch((e) => setNotice(failureNotice('메모 목록을 불러오지 못했습니다', e)))
   }, [])
 
   // mica → acrylic → 불투명. 결과를 body에 실어 배경 규칙을 전환한다 (board.css).
@@ -79,7 +85,11 @@ export default function BoardWindow() {
       .then((b) => {
         document.body.dataset.backdrop = b
       })
-      .catch((e) => console.warn('[board] apply_window_backdrop 실패', e))
+      .catch(() => {
+        // 배경 효과는 폴백 체인의 마지막 단계(불투명)로 떨어뜨린다.
+        // 사용자에게 알릴 일은 아니다 — 화면은 정상적으로 그려진다.
+        document.body.dataset.backdrop = 'opaque'
+      })
   }, [])
 
   useEffect(refreshStats, [refreshStats, tick])
@@ -92,7 +102,7 @@ export default function BoardWindow() {
         .then((rows) => {
           if (seq === searchSeq.current) setResults(rows)
         })
-        .catch((e) => console.warn('[board] search_notes 실패', e))
+        .catch((e) => setNotice(failureNotice('검색에 실패했습니다', e)))
     }
     const t = window.setTimeout(run, parsed.term ? 180 : 0)
     return () => window.clearTimeout(t)
@@ -106,7 +116,9 @@ export default function BoardWindow() {
       .then((un) => {
         dispose = un
       })
-      .catch((e) => console.warn('[board] 이벤트 구독 실패', e))
+      .catch((e) =>
+        setNotice(failureNotice('다른 창의 변경을 따라가지 못합니다. 창을 다시 여세요', e)),
+      )
     return () => dispose?.()
   }, [])
 
@@ -136,7 +148,7 @@ export default function BoardWindow() {
       await openNoteWindow(id)
       await focusNoteWindow(id)
     } catch (e) {
-      console.warn('[board] 메모 창 열기 실패', e)
+      setNotice(failureNotice('메모 창을 열지 못했습니다', e))
     }
   }
 
@@ -145,7 +157,9 @@ export default function BoardWindow() {
     try {
       await softDeleteNote(id)
     } catch (e) {
-      console.warn('[board] soft_delete_note 실패', e)
+      // 실패했으면 목록에서 지우지 않는다 — 지워진 것처럼 보이면 안 된다
+      setNotice(failureNotice('메모를 삭제하지 못했습니다', e))
+      return
     }
     setResults((prev) => prev.filter((n) => n.id !== id))
     setTick((n) => n + 1)
@@ -164,6 +178,15 @@ export default function BoardWindow() {
   return (
     <div className="dark-window">
       <TitleBar title="모든 메모" strongTitle />
+
+      {notice && (
+        <div className="board__notice" role="alert">
+          <span className="board__notice-text">{notice}</span>
+          <button type="button" className="dark-btn" onClick={() => setNotice(null)}>
+            닫기
+          </button>
+        </div>
+      )}
 
       <div className="board__toolbar">
         <div className="board__search">

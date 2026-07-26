@@ -28,6 +28,7 @@ import {
 } from '@codemirror/view'
 
 import { codeContextAttributes } from './caretContext'
+import { markdownIndentUnit, tabIndentKeymap } from './indent'
 import { buildInlineDecorations } from './inlineMarkers'
 import { buildImageDecorations, imageAttachments, type AttachmentStore } from './images'
 import { type DecoRange } from './shared'
@@ -43,6 +44,13 @@ export {
   SELECTION_IN_CODE_CLASS,
 } from './caretContext'
 export { codeBlockAt } from './inlineMarkers'
+export {
+  tabIndents,
+  tabIndentKeymap,
+  markdownIndentUnit,
+  indentMoreInMarkdown,
+  indentLessInMarkdown,
+} from './indent'
 export { buildWikilinkTagDecorations } from './wikilinkTag'
 export { buildTaskDecorations } from './taskList'
 export { buildInlineDecorations } from './inlineMarkers'
@@ -163,7 +171,13 @@ export function createNoteEditorExtensions(options: NoteEditorOptions = {}): Ext
     // 동안의 위치 표시로 넣었으나, 종이 위에 줄마다 색이 깔리는 것이 메모지답지
     // 않다는 사용자 판단으로 걷어냈다 (2026-07-26). 캐럿 자체의 가시성은
     // theme.ts 의 "캐럿"·"줄" 절이 책임진다.
-    keymap.of([...defaultKeymap, ...historyKeymap]),
+    // 들여쓰기 단위는 스페이스 2칸으로 못박는다 — 탭 문자를 넣으면 펜스 판정이
+    // Rust/프론트/lezer 셋으로 갈린다 (근거는 editor/indent.ts 머리말).
+    markdownIndentUnit,
+    // Tab/Shift-Tab. `defaultKeymap` 은 Tab 을 일부러 비워 두므로 직접 붙인다.
+    // 코드블록·목록 안에서만 먹고, 그 밖에서는 false 를 돌려줘 포커스 이동으로
+    // 흐른다 (접근성 탈출구). 순서상 Tab 을 쓰는 다른 바인딩은 없다.
+    keymap.of([...defaultKeymap, ...historyKeymap, ...tabIndentKeymap]),
 
     // base: markdownLanguage → GFM(태스크 리스트·취소선)까지 파싱한다.
     markdown({ base: markdownLanguage, codeLanguages: languages }),

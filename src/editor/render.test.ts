@@ -313,6 +313,126 @@ describe('코드블록 안 캐럿·선택', () => {
 })
 
 /**
+ * Tab / Shift-Tab 들여쓰기.
+ *
+ * 사용자 신고 — "코드블록 내부에 탭이 안 먹는데 이건 어쩔 수 없나?"
+ * `defaultKeymap`은 Tab을 일부러 비워 둔다(포커스 이동 규약). 코드블록·목록
+ * 안에서만 들여쓰기로 쓰고 그 밖에서는 흘려보낸다 — 근거는 `editor/indent.ts`.
+ *
+ * **CSS를 보는 테스트가 아니다.** 실제 keydown 이벤트를 만들어 문서 텍스트가
+ * 바뀌는지로 검증한다.
+ */
+describe('Tab 들여쓰기', () => {
+  /** 진짜 keydown을 흘려보내고, CodeMirror가 기본 동작을 막았는지 돌려준다. */
+  function pressTab(editor: EditorView, shift = false): boolean {
+    const event = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      code: 'Tab',
+      keyCode: 9,
+      shiftKey: shift,
+      bubbles: true,
+      cancelable: true,
+    })
+    editor.contentDOM.dispatchEvent(event)
+    return event.defaultPrevented
+  }
+
+  /** `line`번째 줄의 `column`칸에 커서를 둔다. */
+  function put(editor: EditorView, line: number, column = 0): void {
+    editor.dispatch({ selection: EditorSelection.cursor(editor.state.doc.line(line).from + column) })
+  }
+
+  it('코드블록 안에서 Tab이 줄을 들여쓴다', () => {
+    const editor = mount('```js\nconst x = 1\n```')
+    put(editor, 2, 5)
+    expect(pressTab(editor)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('```js\n  const x = 1\n```')
+  })
+
+  it('Shift-Tab이 되돌린다', () => {
+    const editor = mount('```js\n    const x = 1\n```')
+    put(editor, 2, 6)
+    expect(pressTab(editor, true)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('```js\n  const x = 1\n```')
+  })
+
+  it('목록 안에서도 먹는다 — 할 일·순서 목록 포함', () => {
+    const editor = mount('- 항목\n- [ ] 할 일\n\n1. 첫째')
+    put(editor, 1, 3)
+    expect(pressTab(editor)).toBe(true)
+    put(editor, 2, 3)
+    expect(pressTab(editor)).toBe(true)
+    put(editor, 4, 3)
+    expect(pressTab(editor)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('  - 항목\n  - [ ] 할 일\n\n  1. 첫째')
+  })
+
+  /**
+   * 접근성 탈출구. 문단에서 Tab이 먹히면 키보드만으로 에디터를 못 빠져나가고,
+   * 스페이스 2칸이 두 번 쌓이면 CommonMark의 들여쓴 코드블록이 되어 문단이
+   * 검은 상자로 변한다.
+   */
+  it('문단·제목·인용에서는 먹지 않는다 — 문서도 안 바뀌고 기본 동작도 안 막는다', () => {
+    const doc = '# 제목\n\n그냥 문단\n\n> 인용'
+    const editor = mount(doc)
+    for (const line of [1, 3, 5]) {
+      put(editor, line, 1)
+      expect(pressTab(editor), `${line}번째 줄`).toBe(false)
+    }
+    expect(editor.state.doc.toString()).toBe(doc)
+  })
+
+  it('코드블록과 문단에 걸친 선택은 들여쓰지 않는다', () => {
+    const doc = '문단\n\n```js\nconst x = 1\n```'
+    const editor = mount(doc)
+    editor.dispatch({
+      selection: EditorSelection.range(0, editor.state.doc.line(4).to),
+    })
+    expect(pressTab(editor)).toBe(false)
+    expect(editor.state.doc.toString()).toBe(doc)
+  })
+
+  /**
+   * 탭 문자 금지. `process.md` 통합 게이트 #3 — Rust `after_space_indent()`와
+   * 프론트 `FENCE_OPEN_RE`는 **스페이스만** 0~3칸을 펜스 들여쓰기로 인정하는데
+   * lezer-markdown은 CommonMark대로 탭을 4칸으로 확장한다. 탭을 넣으면 세 파서가
+   * 갈린다. 스페이스 2칸이면 한 번(2칸)은 셋 다 펜스, 두 번(4칸)은 셋 다 펜스 아님.
+   */
+  it('넣는 것은 스페이스 2칸이다 — 탭 문자를 쓰지 않는다', () => {
+    const editor = mount('```js\nx\n```')
+    put(editor, 2)
+    pressTab(editor)
+    pressTab(editor)
+    expect(editor.state.doc.toString()).toBe('```js\n    x\n```')
+    expect(editor.state.doc.toString()).not.toContain('\t')
+  })
+
+  it('펜스 줄을 한 번 들여써도 프론트·Rust의 펜스 판정이 유지된다', () => {
+    const editor = mount('```js\nx\n```')
+    put(editor, 1)
+    pressTab(editor)
+    // src/lib/markdown.ts 의 FENCE_OPEN_RE 와 src-tauri/src/notes.rs 의
+    // after_space_indent() 가 함께 인정하는 범위 = 스페이스 0~3칸
+    const fenceOpen = /^ {0,3}(`{3,}|~{3,})/
+    expect(fenceOpen.test(editor.state.doc.line(1).text)).toBe(true)
+    // 여전히 코드블록으로 파싱된다 (lezer 쪽도 같은 판정)
+    expect(editor.dom.querySelectorAll('.cm-code-line').length).toBe(3)
+  })
+
+  it('선택한 여러 줄을 한 번에 들여쓴다', () => {
+    const editor = mount('```js\na\nb\n```')
+    editor.dispatch({
+      selection: EditorSelection.range(
+        editor.state.doc.line(2).from,
+        editor.state.doc.line(3).to,
+      ),
+    })
+    expect(pressTab(editor)).toBe(true)
+    expect(editor.state.doc.toString()).toBe('```js\n  a\n  b\n```')
+  })
+})
+
+/**
  * 스크롤바.
  *
  * 사용자 신고 — "스크롤 디자인이 너무 크다". 스타일이 하나도 없어서 WebView2

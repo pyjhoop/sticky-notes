@@ -41,13 +41,18 @@ export { buildInlineDecorations } from './inlineMarkers'
 export { taskMarkerToggle, TaskCheckboxWidget } from './taskList'
 export {
   buildImageDecorations,
+  dragHasFiles,
+  droppedFilesFrom,
+  dropTargetField,
+  handleDrop,
   handlePaste,
   imageFilesFrom,
   imageInsertText,
   insertPastedImages,
   parseImageMarkdown,
+  setDropTarget,
 } from './images'
-export type { AttachmentStore } from './images'
+export type { AttachmentStore, InsertImagesOptions, SortedFiles } from './images'
 
 /**
  * 상태 하나로부터 전체 데코레이션을 만든다.

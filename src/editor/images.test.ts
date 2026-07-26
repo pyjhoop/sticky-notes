@@ -15,14 +15,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildDecorations,
   createNoteEditorExtensions,
+  dragHasFiles,
+  droppedFilesFrom,
+  dropTargetField,
+  handleDrop,
   handlePaste,
   imageFilesFrom,
   imageInsertText,
   insertPastedImages,
   parseImageMarkdown,
+  setDropTarget,
   type AttachmentStore,
 } from './index'
 import { attachmentFileName, joinAttachmentPath } from '../lib/attachments'
+import { installFileDropGuard } from '../lib/dropGuard'
 
 // ─────────────────────────────────────────────────────────────
 // 도구
@@ -287,6 +293,218 @@ describe('붙여넣기', () => {
     const editor = mount('', store)
     expect(handlePaste(editor, { files: { length: 1, item: () => pngFile() } })).toBe(true)
     await vi.waitFor(() => expect(editor.state.doc.toString()).toBe('![](attachments/1.png)'))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────
+// 드래그 앤 드롭
+// ─────────────────────────────────────────────────────────────
+
+/** 임의 타입의 가짜 파일. */
+function fileOf(name: string, type: string) {
+  return { type, name, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }
+}
+
+/** `DataTransfer` 흉내 — 드롭 시점에는 `types` 에 `Files` 가 실린다. */
+function dropData(files: ReturnType<typeof fileOf>[], types: string[] = ['Files']) {
+  return {
+    types,
+    files: { length: files.length, item: (i: number) => files[i] ?? null },
+  }
+}
+
+describe('드래그가 파일을 실었는가', () => {
+  it('`types` 의 `Files` 로 판정한다 — dragover 에서는 이것만 볼 수 있다', () => {
+    expect(dragHasFiles({ types: ['Files'], files: { length: 0, item: () => null } })).toBe(true)
+    expect(dragHasFiles({ types: ['text/plain', 'text/html'] })).toBe(false)
+  })
+
+  it('`types` 가 없어도 files/items 로 판정한다', () => {
+    expect(dragHasFiles(dropData([fileOf('a.png', 'image/png')], []))).toBe(true)
+    expect(
+      dragHasFiles({ items: [{ kind: 'file', type: '', getAsFile: () => pngFile() }] }),
+    ).toBe(true)
+    expect(dragHasFiles({ items: [{ kind: 'string', type: 'text/plain', getAsFile: () => null }] })).toBe(
+      false,
+    )
+    expect(dragHasFiles(null)).toBe(false)
+  })
+})
+
+describe('드롭된 파일 가르기', () => {
+  it('이미지와 그 외를 나눈다', () => {
+    const png = fileOf('a.png', 'image/png')
+    const pdf = fileOf('보고서.pdf', 'application/pdf')
+    const sorted = droppedFilesFrom(dropData([png, pdf]))
+    expect(sorted.images).toEqual([png])
+    expect(sorted.skipped).toEqual(['보고서.pdf'])
+  })
+
+  it('MIME 이 비면 확장자로 판정한다 — 탐색기 드롭 대비', () => {
+    const sorted = droppedFilesFrom(dropData([fileOf('사진.WEBP', ''), fileOf('메모.txt', '')]))
+    expect(sorted.images.map((f) => f.name)).toEqual(['사진.WEBP'])
+    expect(sorted.skipped).toEqual(['메모.txt'])
+  })
+
+  it('붙여넣기와 달리 text/plain 이 있어도 파일을 본다 — 브라우저에서 끌어온 이미지', () => {
+    const png = fileOf('a.png', 'image/png')
+    const data = {
+      types: ['Files', 'text/plain'],
+      files: { length: 1, item: () => png },
+      getData: () => 'https://example.com/a.png',
+    }
+    expect(imageFilesFrom(data)).toEqual([]) // 붙여넣기는 텍스트 우선
+    expect(droppedFilesFrom(data).images).toEqual([png]) // 드롭은 파일 우선
+  })
+})
+
+describe('드롭', () => {
+  it('드롭 지점에 `![](attachments/….png)` 를 넣는다', async () => {
+    const { store, saved } = fakeStore()
+    const editor = mount('가나다', store)
+
+    expect(handleDrop(editor, dropData([fileOf('a.png', 'image/png')]), 2)).toBe(true)
+    await vi.waitFor(() =>
+      expect(editor.state.doc.toString()).toBe('가나![](attachments/1.png)다'),
+    )
+    // 커서 위치가 아니라 마우스 지점이다 — 커서는 기본값 0 이었다
+    expect(saved).toHaveLength(1)
+  })
+
+  it('여러 장을 한 번에 드롭하면 전부 삽입한다', async () => {
+    const { store } = fakeStore()
+    const editor = mount('', store)
+    const files = [fileOf('a.png', 'image/png'), fileOf('b.gif', 'image/gif')]
+
+    expect(handleDrop(editor, dropData(files), 0)).toBe(true)
+    await vi.waitFor(() =>
+      expect(editor.state.doc.toString()).toBe(
+        '![](attachments/1.png)\n![](attachments/2.png)',
+      ),
+    )
+  })
+
+  it('이미지가 아닌 파일은 삽입하지 않고 한국어로 알린다', async () => {
+    const { store, saved } = fakeStore()
+    const editor = mount('원문', store)
+
+    // true 여야 한다 — false 면 CodeMirror 기본 drop 이 pdf 를 텍스트로 쏟아붓는다
+    expect(handleDrop(editor, dropData([fileOf('보고서.pdf', 'application/pdf')]), 1)).toBe(true)
+    await vi.waitFor(() => {
+      const panel = editor.dom.querySelector('.cm-attachment-error')
+      expect(panel?.textContent).toContain('이미지 파일이 아니라 건너뛰었습니다')
+      expect(panel?.textContent).toContain('보고서.pdf')
+    })
+    expect(editor.state.doc.toString()).toBe('원문')
+    expect(saved).toHaveLength(0)
+  })
+
+  it('이미지와 그 외를 섞어 떨어뜨리면 이미지는 넣고 나머지는 알린다', async () => {
+    const { store } = fakeStore()
+    const editor = mount('', store)
+    const files = [fileOf('a.png', 'image/png'), fileOf('메모.txt', 'text/plain')]
+
+    expect(handleDrop(editor, dropData(files), 0)).toBe(true)
+    await vi.waitFor(() => expect(editor.state.doc.toString()).toBe('![](attachments/1.png)'))
+    expect(editor.dom.querySelector('.cm-attachment-error')?.textContent).toContain('메모.txt')
+  })
+
+  it('이미지가 없는 드롭은 CodeMirror 기본 동작에 넘긴다 (문자열 드래그)', () => {
+    const { store } = fakeStore()
+    const editor = mount('원문', store)
+    const data = { types: ['text/plain'], getData: () => '끌어온 글' }
+
+    expect(handleDrop(editor, data, 1)).toBe(false)
+    expect(editor.state.doc.toString()).toBe('원문')
+  })
+
+  it('`Files` 라고만 하고 실제 파일이 없으면 넘긴다', () => {
+    const { store } = fakeStore()
+    const editor = mount('원문', store)
+    expect(handleDrop(editor, { types: ['Files'] }, 0)).toBe(false)
+  })
+
+  it('저장소가 없으면 가로채지 않는다', () => {
+    const editor = mount('')
+    expect(handleDrop(editor, dropData([fileOf('a.png', 'image/png')]), 0)).toBe(false)
+  })
+
+  it('드롭 지점이 문서 끝을 넘어도 안전하게 자른다', async () => {
+    const { store } = fakeStore()
+    const editor = mount('짧다', store)
+    expect(handleDrop(editor, dropData([fileOf('a.png', 'image/png')]), 999)).toBe(true)
+    await vi.waitFor(() => expect(editor.state.doc.toString()).toBe('짧다![](attachments/1.png)'))
+  })
+
+  it('원문은 손실 없이 남는다 (절대규칙 3)', async () => {
+    const { store } = fakeStore()
+    const doc = ['# 제목', '', '- [ ] 할 일 `코드`', '[[링크]] 와 #태그'].join('\n')
+    const editor = mount(doc, store)
+
+    handleDrop(editor, dropData([fileOf('a.png', 'image/png')]), doc.length)
+    await vi.waitFor(() =>
+      expect(editor.state.doc.toString()).toBe(`${doc}![](attachments/1.png)`),
+    )
+    // 삽입한 마크다운을 빼면 원문 그대로다
+    expect(editor.state.doc.toString().slice(0, doc.length)).toBe(doc)
+  })
+
+  it('드롭 대상 표시가 상태로 켜지고 꺼진다', () => {
+    const { store } = fakeStore()
+    const editor = mount('', store)
+    expect(editor.state.field(dropTargetField)).toBe(false)
+
+    editor.dispatch({ effects: setDropTarget.of(true) })
+    expect(editor.state.field(dropTargetField)).toBe(true)
+    expect(editor.dom.classList.contains('cm-drop-target')).toBe(true)
+
+    // 드롭이 끝나면 표시가 꺼진다
+    handleDrop(editor, dropData([fileOf('a.png', 'image/png')]), 0)
+    expect(editor.state.field(dropTargetField)).toBe(false)
+    expect(editor.dom.classList.contains('cm-drop-target')).toBe(false)
+  })
+})
+
+describe('창 전체 파일 드롭 방어막', () => {
+  it('에디터 밖의 드롭은 기본 동작을 막는다 — 파일로 네비게이션 금지', () => {
+    const uninstall = installFileDropGuard()
+    const bar = document.createElement('div')
+    document.body.appendChild(bar)
+
+    for (const type of ['dragover', 'drop']) {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      bar.dispatchEvent(event)
+      expect(event.defaultPrevented, type).toBe(true)
+    }
+
+    bar.remove()
+    uninstall()
+  })
+
+  it('에디터 본문 안은 그대로 통과시킨다 — CodeMirror 가 처리한다', () => {
+    const uninstall = installFileDropGuard()
+    const content = document.createElement('div')
+    content.className = 'cm-content'
+    const line = document.createElement('div')
+    content.appendChild(line)
+    document.body.appendChild(content)
+
+    for (const type of ['dragover', 'drop']) {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      line.dispatchEvent(event)
+      expect(event.defaultPrevented, type).toBe(false)
+    }
+
+    content.remove()
+    uninstall()
+  })
+
+  it('해제하면 더 이상 막지 않는다', () => {
+    const uninstall = installFileDropGuard()
+    uninstall()
+    const event = new Event('drop', { bubbles: true, cancelable: true })
+    document.body.dispatchEvent(event)
+    expect(event.defaultPrevented).toBe(false)
   })
 })
 

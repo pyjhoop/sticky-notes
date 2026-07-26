@@ -22,6 +22,7 @@ import '@fontsource/jetbrains-mono/500.css'
 import './styles/tokens.css'
 import './styles/global.css'
 
+import { installFileDropGuard } from './lib/dropGuard'
 import NoteWindow from './windows/NoteWindow'
 import BoardWindow from './windows/BoardWindow'
 import SettingsWindow from './windows/SettingsWindow'
@@ -50,6 +51,10 @@ export function parseRoute(search: string): WindowRoute {
 
 const route = parseRoute(window.location.search)
 document.body.dataset.window = route.kind
+
+// 에디터 밖에 파일을 떨어뜨려도 웹뷰가 그 파일로 네비게이션하지 않게 한다.
+// 세 창 모두 `dragDropEnabled: false` 라 드롭이 웹뷰로 온다 (src/lib/dropGuard.ts).
+installFileDropGuard()
 
 function App() {
   switch (route.kind) {

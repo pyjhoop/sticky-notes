@@ -1,10 +1,34 @@
 /**
- * 이미지 첨부 — 붙여넣기 저장 + 인라인 위젯. (M7)
+ * 이미지 첨부 — 붙여넣기 · 드래그 앤 드롭 저장 + 인라인 위젯. (M7)
  *
  * plan.md M7:
  *   붙여넣기 → 이미지 바이트를 `%APPDATA%\...\attachments\<uuid>.png` 에 저장
  *   → `![](attachments/x.png)` 삽입 → `convertFileSrc()` 로 인라인 위젯 렌더.
  *   디자인의 96×64 플레이스홀더(`--attach-w` / `--attach-h`) 스타일 재사용.
+ *
+ * 드래그 앤 드롭도 **같은 파이프라인**을 탄다 — `store.save()` → `imageInsertText()`
+ *   → `view.dispatch`. 새 백엔드 커맨드는 없다.
+ *
+ *   `tauri.conf.json` 의 메모 창은 `dragDropEnabled: false` 다. 이 값이 곧
+ *   "웹뷰가 HTML5 드롭을 직접 받는다" 는 뜻이고, 그래야 아래 `drop` 핸들러가 돈다.
+ *   근거:
+ *     · tauri-utils 2.9.3 `config.rs:1944` —
+ *       "Whether the drag and drop is enabled or not on the webview. By default it is
+ *        enabled. **Disabling it is required to use HTML5 drag and drop on the frontend
+ *        on Windows.**"
+ *     · wry 0.55.1 `src/webview2/mod.rs:150-157` — 네이티브 핸들러를 붙일 때만
+ *       `SetAllowExternalDrop(false)` 를 호출한다("Disable file drops, so our handler
+ *       can capture it"). 즉 `dragDropEnabled: false` 면 그 호출이 없고,
+ *       WebView2 의 `AllowExternalDrop` 기본값(TRUE)이 그대로 남아 웹뷰가 드롭을 받는다.
+ *     · WebView2 `ICoreWebView2Controller4::put_AllowExternalDrop` — "The default value
+ *       is TRUE."
+ *
+ *   네이티브 경로(`dragDropEnabled: true`)를 쓰지 않는 이유:
+ *     ① `tauri://drag-drop` 은 **파일 경로만** 준다 → 파일을 읽는 백엔드 커맨드를
+ *        새로 만들어야 하고, 그러면 "경로에 사용자 문자열이 들어가지 않는다" 는
+ *        `attachments.rs` 의 보안 전제가 깨진다
+ *     ② 브라우저에서 이미지를 직접 끌어오는 경우는 파일 경로가 아예 없어 못 받는다
+ *     ③ 붙여넣기와 파이프라인을 공유할 수 없다
  *
  * 디자인 근거 — `design/Sticky Notes for Windows.dc.html` 100~102행:
  *   96×64 · radius 6px · border 1px `rgba(0,0,0,.14)`
@@ -286,27 +310,95 @@ export interface ClipboardLike {
 export function imageFilesFrom(data: ClipboardLike | null | undefined): PastedImage[] {
   if (!data) return []
   if (data.getData?.('text/plain')) return []
+  return collectFiles(data).images
+}
 
-  const out: PastedImage[] = []
+/**
+ * 백엔드(`attachments.rs`)의 확장자 화이트리스트와 같은 목록.
+ *
+ * 탐색기에서 끌어온 파일은 MIME 이 비어 있을 수 있어(웹뷰가 확장자를 모르는 경우)
+ * 파일명으로도 판정한다. 최종 판정은 어차피 백엔드가 한다 — 여기서는 "이 드롭을
+ * 우리가 가로챌 것인가" 만 정한다.
+ */
+const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp)$/i
+
+function isImageFile(file: PastedImage): boolean {
+  if (file.type) return file.type.startsWith('image/')
+  return IMAGE_EXT_RE.test(file.name ?? '')
+}
+
+/** 사용자에게 보여 줄 파일 이름. 이름이 없으면 MIME 이라도 보여 준다. */
+function fileLabel(file: PastedImage): string {
+  return file.name?.trim() || file.type || '알 수 없는 파일'
+}
+
+/** `DataTransfer` 안의 파일들을 이미지 / 그 외로 가른다. */
+export interface SortedFiles {
+  images: PastedImage[]
+  /** 이미지가 아니라 건너뛴 파일의 이름 */
+  skipped: string[]
+}
+
+function collectFiles(data: ClipboardLike): SortedFiles {
+  const images: PastedImage[] = []
+  const skipped: string[] = []
+
   const files = data.files
   if (files) {
     for (let i = 0; i < files.length; i += 1) {
       const file = files.item(i)
-      if (file && file.type.startsWith('image/')) out.push(file)
+      if (!file) continue
+      if (isImageFile(file)) images.push(file)
+      else skipped.push(fileLabel(file))
     }
   }
-  if (out.length > 0) return out
+  if (images.length > 0 || skipped.length > 0) return { images, skipped }
 
+  // `files` 가 비어 있을 때만 `items` 로 폴백한다 — 같은 파일을 두 번 세지 않는다.
   const items = data.items
   if (items) {
     for (let i = 0; i < items.length; i += 1) {
       const item = items[i]
-      if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+      if (item.kind !== 'file') continue
       const file = item.getAsFile()
-      if (file) out.push(file)
+      if (!file) continue
+      if (isImageFile(file)) images.push(file)
+      else skipped.push(fileLabel(file))
     }
   }
-  return out
+  return { images, skipped }
+}
+
+/**
+ * 드롭된 파일을 이미지 / 그 외로 가른다.
+ *
+ * **붙여넣기와 달리 `text/plain` 우선 규칙을 쓰지 않는다.** 그 규칙은 워드·엑셀이
+ * 글과 함께 실어 보내는 비트맵 때문에 있는 것이고, 드래그에는 해당하지 않는다.
+ * 드래그가 파일을 싣고 있는지는 `dragHasFiles()` 가 `types` 로 먼저 가른다.
+ */
+export function droppedFilesFrom(data: ClipboardLike | null | undefined): SortedFiles {
+  if (!data) return { images: [], skipped: [] }
+  return collectFiles(data)
+}
+
+/**
+ * 이 드래그가 **파일**을 싣고 있는가.
+ *
+ * `dragover` 시점에는 브라우저가 `files` 를 감추므로(보호 모드) `types` 로만 알 수 있다.
+ * 에디터 안에서 문자열을 끌어 옮기는 CodeMirror 기본 동작은 `Files` 를 싣지 않으므로,
+ * 이 판정이 곧 "우리가 가로챌 드래그인가" 다.
+ */
+export function dragHasFiles(data: ClipboardLike | null | undefined): boolean {
+  if (!data) return false
+  if (data.types?.includes('Files')) return true
+  if (data.files && data.files.length > 0) return true
+  const items = data.items
+  if (items) {
+    for (let i = 0; i < items.length; i += 1) {
+      if (items[i].kind === 'file') return true
+    }
+  }
+  return false
 }
 
 /** `file.type` 이 비어 있으면 파일명 확장자를 힌트로 쓴다. */
@@ -316,17 +408,49 @@ function extHintOf(file: PastedImage): string {
   return dot >= 0 ? (file.name as string).slice(dot + 1) : ''
 }
 
+/** 실패 문구의 동사 — 붙여넣기와 드롭이 같은 함수를 쓰므로 호출자가 정한다. */
+const PASTE_ACTION = '붙여넣지'
+const DROP_ACTION = '가져오지'
+
+export interface InsertImagesOptions {
+  /**
+   * 삽입 위치. 없으면 현재 선택을 대체한다(붙여넣기).
+   *
+   * 드롭은 커서가 아니라 **마우스가 가리킨 지점**에 넣으므로 이 값을 쓴다.
+   */
+  at?: number
+  /** 이미지가 아니라 건너뛴 파일 이름들 */
+  skipped?: readonly string[]
+  /** 실패 문구의 동사 */
+  action?: string
+}
+
+/** 저장 실패 + 건너뛴 파일을 한 줄로 묶는다. 둘 다 없으면 `null`(띠를 감춘다). */
+function attachmentErrorMessage(
+  errors: readonly string[],
+  skipped: readonly string[],
+  action: string,
+): string | null {
+  const parts: string[] = []
+  if (errors.length > 0) parts.push(`이미지를 ${action} 못했습니다 — ${errors[0]}`)
+  if (skipped.length > 0) {
+    parts.push(`이미지 파일이 아니라 건너뛰었습니다 — ${skipped.join(', ')}`)
+  }
+  return parts.length > 0 ? parts.join(' / ') : null
+}
+
 /**
  * 이미지를 저장하고 마크다운을 **트랜잭션으로** 문서에 넣는다.
  * (CLAUDE.md 절대규칙 4 — DOM 을 직접 만지지 않는다)
  *
- * `paste` 이벤트 핸들러에서 분리해 둔 이유는 테스트에서 가짜 클립보드로
+ * `paste` / `drop` 이벤트 핸들러에서 분리해 둔 이유는 테스트에서 가짜 클립보드로
  * 이 경로 전체를 돌려 보기 위해서다.
  */
 export async function insertPastedImages(
   view: EditorView,
   store: AttachmentStore,
   files: readonly PastedImage[],
+  options: InsertImagesOptions = {},
 ): Promise<void> {
   const paths: string[] = []
   const errors: string[] = []
@@ -340,11 +464,23 @@ export async function insertPastedImages(
     }
   }
 
-  const changes = paths.length > 0 ? view.state.replaceSelection(paths.map(imageInsertText).join('\n')) : {}
+  // 여러 장은 한 줄에 하나씩. 삽입은 한 트랜잭션이라 undo 한 번으로 되돌아간다.
+  const text = paths.map(imageInsertText).join('\n')
+  let changes: Parameters<EditorView['dispatch']>[0] = {}
+  if (text) {
+    if (options.at === undefined) {
+      changes = view.state.replaceSelection(text)
+    } else {
+      // 저장(await) 동안 문서가 줄었을 수 있다 — 문서 길이로 조인다.
+      const at = Math.max(0, Math.min(options.at, view.state.doc.length))
+      changes = { changes: { from: at, insert: text }, selection: { anchor: at + text.length } }
+    }
+  }
+
   view.dispatch({
     ...changes,
     effects: setAttachmentError.of(
-      errors.length > 0 ? `이미지를 붙여넣지 못했습니다 — ${errors[0]}` : null,
+      attachmentErrorMessage(errors, options.skipped ?? [], options.action ?? PASTE_ACTION),
     ),
   })
 }
@@ -367,12 +503,130 @@ const pasteHandler = EditorView.domEventHandlers({
   },
 })
 
+// ─────────────────────────────────────────────────────────────
+// 드래그 앤 드롭
+// ─────────────────────────────────────────────────────────────
+
+/** 드래그가 에디터 위에 올라와 있는가 — 시각 피드백용. */
+export const setDropTarget = StateEffect.define<boolean>()
+
+/**
+ * 드롭 대상 표시.
+ *
+ * DOM 에 클래스를 직접 붙이지 않고 상태로 둔다 — CodeMirror 가 다시 그릴 때
+ * 사라지지 않고, 테스트에서 상태로 검증할 수 있다.
+ * `.cm-drop-target` 의 겉모습은 `src/styles/editor.css` 에 있다.
+ */
+export const dropTargetField = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setDropTarget)) return effect.value
+    }
+    return value
+  },
+  provide: (field) =>
+    EditorView.editorAttributes.compute([field], (state): Record<string, string> =>
+      state.field(field) ? { class: 'cm-drop-target' } : {},
+    ),
+})
+
+/**
+ * `dragenter` / `dragleave` 깊이.
+ *
+ * 두 이벤트는 에디터 안의 자식 엘리먼트를 지날 때마다 짝지어 오므로,
+ * 세지 않으면 표시가 깜빡인다.
+ */
+const dragDepth = new WeakMap<EditorView, number>()
+
+function setDropActive(view: EditorView, active: boolean): void {
+  if (!active) dragDepth.delete(view)
+  if (view.state.field(dropTargetField, false) === active) return
+  view.dispatch({ effects: setDropTarget.of(active) })
+}
+
+/** 우리가 가로챌 드래그인가 — 저장소가 있고 파일이 실려 있어야 한다. */
+function acceptsDrag(view: EditorView, data: ClipboardLike | null | undefined): boolean {
+  return view.state.facet(attachmentStore) !== null && dragHasFiles(data)
+}
+
+/**
+ * `drop` 이벤트 본체.
+ *
+ * @param pos 드롭 지점의 문서 위치. `null` 이면 현재 선택을 대체한다
+ * @returns 우리가 처리했으면 `true`. `false` 면 CodeMirror 기본 동작(문자열 드래그)
+ */
+export function handleDrop(
+  view: EditorView,
+  data: ClipboardLike | null | undefined,
+  pos: number | null,
+): boolean {
+  setDropActive(view, false)
+
+  const store = view.state.facet(attachmentStore)
+  if (!store) return false
+  // 파일이 없는 드래그(에디터 안 문자열 이동 등)는 CodeMirror 에 넘긴다.
+  if (!dragHasFiles(data)) return false
+
+  const { images, skipped } = droppedFilesFrom(data)
+  // `Files` 라고 광고했지만 실제로 꺼낼 파일이 없는 경우(브라우저의 지연 전송 등)도
+  // CodeMirror 에 넘긴다 — 최소한 URL 텍스트라도 들어간다.
+  if (images.length === 0 && skipped.length === 0) return false
+
+  // 이미지가 없어도 `true` 다 — 그냥 넘기면 CodeMirror 기본 `drop` 이
+  // pdf 를 텍스트로 읽어 본문에 쏟아붓는다.
+  void insertPastedImages(view, store, images, {
+    at: pos ?? undefined,
+    skipped,
+    action: DROP_ACTION,
+  })
+  return true
+}
+
+const dropHandlers = EditorView.domEventHandlers({
+  // `dragover` 에서 preventDefault 하지 않으면 `drop` 이 아예 오지 않는다.
+  dragover(event, view) {
+    if (!acceptsDrag(view, event.dataTransfer)) return false
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    setDropActive(view, true)
+    return true // → CodeMirror 가 preventDefault() 한다
+  },
+
+  dragenter(event, view) {
+    if (!acceptsDrag(view, event.dataTransfer)) return false
+    dragDepth.set(view, (dragDepth.get(view) ?? 0) + 1)
+    setDropActive(view, true)
+    return true
+  },
+
+  dragleave(_event, view) {
+    const depth = (dragDepth.get(view) ?? 0) - 1
+    if (depth > 0) dragDepth.set(view, depth)
+    else setDropActive(view, false)
+    return false // 표시만 끈다 — 기본 동작을 막지 않는다
+  },
+
+  drop(event, view) {
+    const pos = view.posAtCoords({ x: event.clientX, y: event.clientY }, false)
+    if (!handleDrop(view, event.dataTransfer, pos)) return false
+    event.preventDefault()
+    return true
+  },
+})
+
 /**
  * 첨부 확장 묶음.
  *
- * `store` 가 없으면(브라우저 개발 모드) 붙여넣기는 기본 동작으로 흐르고,
+ * `store` 가 없으면(브라우저 개발 모드) 붙여넣기·드롭은 기본 동작으로 흐르고,
  * 이미 본문에 있는 `![](…)` 는 "첨부를 열 수 없음" 으로 보인다.
  */
 export function imageAttachments(store?: AttachmentStore): Extension {
-  return [attachmentStore.of(store ?? null), attachmentErrorField, pasteHandler, dismissErrorPanel]
+  return [
+    attachmentStore.of(store ?? null),
+    attachmentErrorField,
+    dropTargetField,
+    pasteHandler,
+    dropHandlers,
+    dismissErrorPanel,
+  ]
 }

@@ -1,11 +1,12 @@
 /**
- * 설정 창 (M6) — 620px 고정폭.
+ * 설정 창 (M6) — 560px 고정폭 · 700px 높이(디자인 v2 2단계).
  *
- * 근거: design/Sticky Notes for Windows.dc.html line 210-258
- *   디자인의 `OBSIDIAN` 섹션은 v1 범위 밖이라 `DATA`로 재해석됐다
- *   (plan.md "디자인 대비 변경점"). 볼트/충돌 UI는 만들지 않는다.
+ * 근거: design/StickyNote App.dc.html (버전 2) 352~424행.
+ *   디자인의 `OBSIDIAN`/자동 백업 스케줄·언어 전환 섹션은 이번 시각 개편 범위
+ *   밖이다(plan.md "디자인 대비 변경점" · 사용자 지시 — 기능은 늘리지 않는다).
+ *   볼트/충돌 UI는 만들지 않는다.
  *
- * 섹션: DISPLAY / DATA / SHORTCUTS
+ * 섹션: DISPLAY / DATA / UPDATE / SHORTCUTS (개수·기능 동일, 리스킨만)
  *
  * **소유: 트랙 D (M6).**
  */

@@ -89,9 +89,10 @@ input[type='range']::-webkit-slider-thumb {
   box-shadow: var(--shadow-thumb);
 }
 
-/* 다크 크롬 위의 슬라이더 */
+/* 라이트 크롬(설정 창) 위의 슬라이더 미채움 트랙 — design 364행과 같은 톤.
+   --dark-btn-bg(필드 채움, 거의 흰색)를 그대로 쓰면 0.985 창 배경과 구분이 안 된다. */
 body[data-window='settings'] input[type='range']::-webkit-slider-runnable-track {
-  background: var(--dark-btn-bg);
+  background: var(--dark-toggle-off);
 }
 
 button {

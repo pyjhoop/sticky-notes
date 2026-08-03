@@ -452,6 +452,8 @@ body:not([data-backdrop]) .dark-window {
 
 .board__folder-row {
   display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .board__folder-item {
@@ -510,6 +512,34 @@ body:not([data-backdrop]) .dark-window {
 
 .board__folder-item[data-active='true'] .board__folder-count {
   color: var(--accent);
+}
+
+.board__folder-delete {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  align-self: center;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--dark-text-3);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms var(--fade-ease), background-color 120ms var(--fade-ease),
+    color 120ms var(--fade-ease);
+}
+
+.board__folder-row:hover .board__folder-delete {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.board__folder-delete:hover {
+  background: color-mix(in srgb, var(--red-close) 14%, transparent);
+  color: var(--red-close);
 }
 
 .board__sidebar-divider {
@@ -582,6 +612,10 @@ body:not([data-backdrop]) .dark-window {
 
 .board__row:hover {
   background: var(--dark-hover);
+}
+
+.board__row--clickable {
+  cursor: pointer;
 }
 
 .board__row--selected {

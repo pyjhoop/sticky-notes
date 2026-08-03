@@ -404,6 +404,21 @@ export default function BoardWindow() {
     setTick((n) => n + 1)
   }
 
+  /** 휴지통의 메모를 전부 완전히 삭제한다 — 선택 없이 한 번에 비운다. */
+  const onEmptyTrash = async () => {
+    const ids = filterByFolderSelection(all, 'trash').map((n) => n.id)
+    if (ids.length === 0) return
+    if (!window.confirm(`휴지통을 비울까요? ${ids.length}개 메모가 완전히 삭제되며 되돌릴 수 없습니다.`)) return
+    try {
+      await permanentlyDeleteNotes(ids)
+    } catch (e) {
+      setNotice(failureNotice('휴지통을 비우지 못했습니다', e))
+      return
+    }
+    setSelectedIds(new Set())
+    setTick((n) => n + 1)
+  }
+
   const onExportSelected = async () => {
     const ids = Array.from(selectedIds)
     if (ids.length === 0) return
@@ -570,6 +585,18 @@ export default function BoardWindow() {
               </>
             )}
           </div>
+        ) : isTrash ? (
+          <div className="board__status">
+            <button
+              type="button"
+              className="dark-btn"
+              onClick={() => void onEmptyTrash()}
+              disabled={counts.trash === 0}
+            >
+              휴지통 비우기
+            </button>
+            <span>{footline}</span>
+          </div>
         ) : (
           <>
             <button
@@ -644,6 +671,18 @@ export default function BoardWindow() {
                   <span className="board__folder-name">{f.name}</span>
                   <span className="board__folder-count">{counts.byFolder[f.id] ?? 0}</span>
                 </button>
+                <button
+                  type="button"
+                  className="board__folder-delete"
+                  title="폴더 삭제"
+                  aria-label={`'${f.name}' 폴더 삭제`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void onDeleteFolder(f)
+                  }}
+                >
+                  ×
+                </button>
               </div>
             ))}
 
@@ -679,7 +718,27 @@ export default function BoardWindow() {
               {displayList.map((n) => (
                 <div
                   key={n.id}
-                  className={selectedIds.has(n.id) ? 'board__row board__row--selected' : 'board__row'}
+                  className={
+                    selectedIds.has(n.id)
+                      ? 'board__row board__row--selected'
+                      : isTrash
+                        ? 'board__row'
+                        : 'board__row board__row--clickable'
+                  }
+                  onClick={
+                    isTrash
+                      ? undefined
+                      : (e) => {
+                          const target = e.target
+                          if (
+                            target instanceof Element &&
+                            target.closest('.board__row-check, .board__row-actions')
+                          ) {
+                            return
+                          }
+                          void openNote(n.id)
+                        }
+                  }
                   onContextMenu={
                     isTrash
                       ? undefined

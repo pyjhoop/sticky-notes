@@ -9,6 +9,7 @@
 pub mod attachments;
 pub mod db;
 pub mod export;
+pub mod folders;
 pub mod notes;
 pub mod shortcuts;
 pub mod tray;
@@ -47,6 +48,8 @@ pub fn run() {
         .manage(update::UpdateState::default())
         .setup(|app| {
             db::init(app)?;
+            // 휴지통 14일 자동 영구삭제 — 실패해도 앱 기동을 막지 않는다.
+            folders::purge_on_startup(app);
             tray::init(app)?;
             shortcuts::init(app)?;
             windows::bootstrap(app)?;
@@ -65,6 +68,15 @@ pub fn run() {
             // ── db.rs · 설정 key/value · 트랙 A (M2) ───────────────
             db::get_settings,
             db::set_setting,
+            // ── folders.rs · 폴더 사이드바 + 휴지통 ─────────────────
+            folders::list_folders,
+            folders::create_folder,
+            folders::rename_folder,
+            folders::delete_folder,
+            folders::move_notes_to_folder,
+            folders::soft_delete_notes,
+            folders::restore_notes,
+            folders::permanently_delete_notes,
             // ── windows.rs · 창 수명 + 지오메트리 · 트랙 A/C ────────
             windows::open_note_window,
             windows::new_note_window,

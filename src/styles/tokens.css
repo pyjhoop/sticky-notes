@@ -252,14 +252,26 @@
   --search-h: 32px;
   --field-h: 34px;
   --filter-chip: 18px;
-  --board-w: 940px;
-  --board-h: 452px;
+  /* 보드 창 — 폴더 사이드바 + 리스트 뷰로 개편되며 카드 그리드보다 넓은 캔버스가
+     필요해졌다 (사용자 요청, 2026-08-03). 940×452 → 1040×640.
+     tauri.conf.json의 board 창 width/height/minWidth/minHeight도 같이 키웠다. */
+  --board-w: 1040px;
+  --board-h: 640px;
   --board-cols: 4;
   --board-gap: 12px;
   --board-pad: 16px;
   --card-h: 132px;
   --card-pad-y: 12px;
   --card-pad-x: 13px;
+
+  /* ── 보드 — 폴더 사이드바 + 리스트 뷰 (2026-08-03) ─────────
+   * 카드 그리드를 대체한다. 기존 토큰(--board-pad · --field-h · --search-h ·
+   * --radius-* · --dark-* 등)으로 표현되지 않는 치수만 새로 추가한다. */
+  --board-sidebar-w: 180px;
+  --board-row-pad-y: 10px;
+  --board-row-pad-x: 14px;
+  --board-row-gap: 3px;
+  --board-badge-h: 18px;
 
   --settings-w: 620px;
   --settings-pad-x: 24px;

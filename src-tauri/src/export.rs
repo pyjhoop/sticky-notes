@@ -123,10 +123,14 @@ pub fn export_stem(title: &str, id: &str, created_at: &str, date_prefix: bool) -
 }
 
 /// 메모마다 `.md` 파일을 쓴다. 커맨드가 아니라 여기를 테스트한다.
+///
+/// `ids`가 `Some`이면 그 id들만(삭제 여부 무관 — 휴지통에 있는 메모도 삭제 전에
+/// 내보낼 수 있어야 한다) 내보낸다. `None`이면 기존 동작(삭제되지 않은 전체)이다.
 pub fn export_markdown_in(
     conn: &rusqlite::Connection,
     dir: &Path,
     date_prefix: bool,
+    ids: Option<&[String]>,
 ) -> Result<ExportResult, String> {
     if dir.as_os_str().is_empty() {
         return Err("내보낼 폴더를 선택하세요".into());
@@ -137,25 +141,54 @@ pub fn export_markdown_in(
         return Err(format!("폴더가 아닙니다: {}", dir.display()));
     }
 
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, title, body, created_at FROM notes
-             WHERE deleted_at IS NULL ORDER BY created_at ASC",
-        )
-        .map_err(|e| format!("내보내기 조회 준비 실패: {e}"))?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-            ))
-        })
-        .map_err(|e| format!("내보내기 조회 실패: {e}"))?;
-    let notes = rows
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|e| format!("내보내기 행 읽기 실패: {e}"))?;
+    let notes: Vec<(String, String, String, String)> = match ids {
+        Some(ids) if !ids.is_empty() => {
+            let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT id, title, body, created_at FROM notes
+                 WHERE id IN ({placeholders}) ORDER BY created_at ASC"
+            );
+            let mut stmt = conn
+                .prepare(&sql)
+                .map_err(|e| format!("내보내기 조회 준비 실패: {e}"))?;
+            let params_ref: Vec<&dyn rusqlite::ToSql> =
+                ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+            let rows = stmt
+                .query_map(params_ref.as_slice(), |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                })
+                .map_err(|e| format!("내보내기 조회 실패: {e}"))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| format!("내보내기 행 읽기 실패: {e}"))?
+        }
+        // 빈 id 목록이 명시적으로 왔다 — 아무것도 내보내지 않는다
+        Some(_) => Vec::new(),
+        None => {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, title, body, created_at FROM notes
+                     WHERE deleted_at IS NULL ORDER BY created_at ASC",
+                )
+                .map_err(|e| format!("내보내기 조회 준비 실패: {e}"))?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                    ))
+                })
+                .map_err(|e| format!("내보내기 조회 실패: {e}"))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| format!("내보내기 행 읽기 실패: {e}"))?
+        }
+    };
 
     let mut used: Vec<String> = Vec::new();
     let mut count = 0usize;
@@ -196,18 +229,22 @@ pub fn export_markdown_in(
 ///
 /// `date_prefix`가 참이면 파일명이 `2026-07-26 스프린트24.md` 형태가 된다
 /// (설정 DATA 섹션의 "파일명에 생성일 프리픽스" 토글).
+///
+/// `ids`가 있으면 그 메모들만 내보낸다(보드 리스트 뷰의 "선택 항목 내보내기").
+/// 생략하면 기존 동작 — 삭제되지 않은 전체.
 #[tauri::command]
 pub fn export_markdown<R: Runtime>(
     _app: AppHandle<R>,
     db: tauri::State<'_, Db>,
     dir: String,
     date_prefix: bool,
+    ids: Option<Vec<String>>,
 ) -> CmdResult<ExportResult> {
     if dir.trim().is_empty() {
         return Err("내보낼 폴더를 선택하세요".into());
     }
     let target = PathBuf::from(dir.trim());
-    db.with(|c| export_markdown_in(c, &target, date_prefix))
+    db.with(|c| export_markdown_in(c, &target, date_prefix, ids.as_deref()))
 }
 
 /// `sticky-notes.db`를 타임스탬프 붙여 복사한다. 반환값은 만들어진 파일 경로.
@@ -332,7 +369,7 @@ mod tests {
         save_note_in(&mut conn, &gone.id, "# 지운 것").unwrap();
         soft_delete_note_in(&conn, &gone.id).unwrap();
 
-        let r = export_markdown_in(&conn, &dir, false).unwrap();
+        let r = export_markdown_in(&conn, &dir, false, None).unwrap();
         assert_eq!(r.count, 2);
         assert_eq!(r.skipped.len(), 1);
         assert!(r.skipped[0].starts_with(&empty.id));
@@ -351,7 +388,7 @@ mod tests {
         assert!(crate::db::load_settings(&conn).unwrap().export_dir.is_some());
 
         // 날짜 프리픽스 토글
-        let r2 = export_markdown_in(&conn, &dir, true).unwrap();
+        let r2 = export_markdown_in(&conn, &dir, true, None).unwrap();
         assert_eq!(r2.count, 2);
         let names: Vec<String> = std::fs::read_dir(&dir)
             .unwrap()
@@ -363,6 +400,46 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// DoD — `ids`가 있으면 그것만, 삭제 여부와 무관하게 내보낸다(휴지통 메모 포함).
+    #[test]
+    fn exports_only_given_ids_including_trashed() {
+        use crate::db::open_memory;
+        use crate::notes::{create_note_in, save_note_in, soft_delete_note_in};
+
+        let dir = std::env::temp_dir().join(format!(
+            "sticky-export-ids-{}",
+            uuid::Uuid::now_v7().simple()
+        ));
+        let mut conn = open_memory().unwrap();
+
+        let a = create_note_in(&conn, None).unwrap();
+        save_note_in(&mut conn, &a.id, "# A\n본문A").unwrap();
+        let b = create_note_in(&conn, None).unwrap();
+        save_note_in(&mut conn, &b.id, "# B\n본문B").unwrap();
+        let trashed = create_note_in(&conn, None).unwrap();
+        save_note_in(&mut conn, &trashed.id, "# 휴지통 메모\n본문").unwrap();
+        soft_delete_note_in(&conn, &trashed.id).unwrap();
+
+        // A와 휴지통 메모만 선택 — B는 빠지고, 삭제된 것도 선택했으면 내보내진다
+        let ids = vec![a.id.clone(), trashed.id.clone()];
+        let r = export_markdown_in(&conn, &dir, false, Some(&ids)).unwrap();
+        assert_eq!(r.count, 2);
+        assert!(dir.join("A.md").exists());
+        assert!(dir.join("휴지통 메모.md").exists());
+        assert!(!dir.join("B.md").exists());
+
+        // 빈 id 목록 — 아무것도 내보내지 않는다
+        let dir2 = std::env::temp_dir().join(format!(
+            "sticky-export-ids-empty-{}",
+            uuid::Uuid::now_v7().simple()
+        ));
+        let r2 = export_markdown_in(&conn, &dir2, false, Some(&[])).unwrap();
+        assert_eq!(r2.count, 0);
+
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::remove_dir_all(&dir2).ok();
     }
 
     #[test]

@@ -80,7 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_links_target   ON links(target);
 type Migration = fn(&rusqlite::Transaction<'_>) -> rusqlite::Result<()>;
 
 /// **뒤로만 추가한다.** 이미 배포된 항목을 고치면 기존 DB가 깨진다.
-const MIGRATIONS: &[Migration] = &[m001_initial];
+const MIGRATIONS: &[Migration] = &[m001_initial, m002_folders];
 
 /// 최신 스키마 버전 = 적용된 마이그레이션 개수.
 pub const LATEST_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -88,6 +88,25 @@ pub const LATEST_VERSION: i64 = MIGRATIONS.len() as i64;
 fn m001_initial(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
     tx.execute_batch(SCHEMA_V1)?;
     tx.execute_batch(INDEXES_V1)?;
+    Ok(())
+}
+
+/// 폴더 사이드바 + 리스트 뷰 — 사용자가 만드는 실제 폴더와 메모의 소속.
+///
+/// `전체`/`미분류`/`휴지통`은 가상 폴더라 DB 행이 아니다 (프론트에서 계산).
+fn m002_folders(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS folders (
+          id          TEXT PRIMARY KEY,
+          name        TEXT NOT NULL,
+          sort_order  INTEGER NOT NULL DEFAULT 0,
+          created_at  TEXT NOT NULL
+        );
+        ALTER TABLE notes ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL;
+        CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id);
+        "#,
+    )?;
     Ok(())
 }
 
@@ -377,6 +396,14 @@ mod tests {
             .unwrap()
     }
 
+    fn column_names(conn: &Connection, table: &str) -> Vec<String> {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({table})"))
+            .unwrap();
+        let rows = stmt.query_map([], |r| r.get::<_, String>(1)).unwrap();
+        rows.map(|r| r.unwrap()).collect()
+    }
+
     #[test]
     fn migration_creates_five_tables() {
         let conn = open_memory().unwrap();
@@ -385,6 +412,57 @@ mod tests {
             assert!(names.contains(&t.to_string()), "{t} 테이블이 없다: {names:?}");
         }
         assert_eq!(user_version(&conn), LATEST_VERSION);
+    }
+
+    /// DoD — m002_folders: `folders` 테이블 + `notes.folder_id` 컬럼 + 인덱스.
+    #[test]
+    fn migration_adds_folders_table_and_notes_folder_id() {
+        let conn = open_memory().unwrap();
+        let names = table_names(&conn);
+        assert!(names.contains(&"folders".to_string()), "folders 테이블이 없다: {names:?}");
+
+        let folder_cols = column_names(&conn, "folders");
+        for c in ["id", "name", "sort_order", "created_at"] {
+            assert!(folder_cols.contains(&c.to_string()), "folders.{c} 컬럼이 없다: {folder_cols:?}");
+        }
+
+        let note_cols = column_names(&conn, "notes");
+        assert!(
+            note_cols.contains(&"folder_id".to_string()),
+            "notes.folder_id 컬럼이 없다: {note_cols:?}"
+        );
+
+        // idx_notes_folder 인덱스가 있다
+        let idx_names: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='notes'")
+                .unwrap();
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0)).unwrap();
+            rows.map(|r| r.unwrap()).collect()
+        };
+        assert!(
+            idx_names.contains(&"idx_notes_folder".to_string()),
+            "idx_notes_folder 인덱스가 없다: {idx_names:?}"
+        );
+
+        assert_eq!(user_version(&conn), LATEST_VERSION);
+    }
+
+    /// DoD — m002도 멱등해야 한다: 새 테이블/컬럼이 있는 상태에서 다시 돌려도 안전하다.
+    #[test]
+    fn migration_with_folders_is_idempotent() {
+        let mut conn = open_memory().unwrap();
+        let folder = crate::folders::create_folder_in(&conn, "업무").unwrap();
+        let note = crate::notes::create_note_in(&conn, None).unwrap();
+        crate::folders::move_notes_to_folder_in(&conn, std::slice::from_ref(&note.id), Some(&folder.id))
+            .unwrap();
+
+        migrate(&mut conn).unwrap();
+        migrate(&mut conn).unwrap();
+
+        assert_eq!(table_names(&conn).len(), 6);
+        let stored = crate::notes::get_note_in(&conn, &note.id).unwrap().unwrap();
+        assert_eq!(stored.folder_id, Some(folder.id));
     }
 
     /// DoD — 마이그레이션 멱등성: 두 번 돌려도 안전해야 한다.

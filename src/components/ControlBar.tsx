@@ -1,10 +1,11 @@
 /**
  * 메모 창 컨트롤 바 — 핀 · 투명도 슬라이더 · 색상 팝오버 · `+` · `✕`.
  *
- * 근거: design/Sticky Notes for Windows.dc.html 41~57행.
- * 높이 38px는 유휴 상태에서도 유지된다 (레이아웃 시프트 0) — 스타일은 `src/styles/note.css`.
+ * 근거: design/StickyNote App.dc.html (버전 2) N-03 · 호버 툴바 예시(56~84행).
+ * 높이 32px(2026-08-03 v2: 38px→32px)는 유휴 상태에서도 유지된다 (레이아웃 시프트 0)
+ * — 스타일은 `src/styles/note.css`.
  *
- * **소유: 트랙 C (M1).**
+ * **소유: 트랙 C (M1) · 2026-08-03 2단계는 A트랙이 시각만 리스킨.**
  */
 
 import type { MouseEvent } from 'react'

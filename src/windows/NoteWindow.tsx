@@ -1,15 +1,19 @@
 /**
  * 메모 창 — 프레임리스 종이 + 컨트롤 바 + 저장 푸터.
  *
- * 근거: design/Sticky Notes for Windows.dc.html 37~121행 · 264~268행(유휴).
+ * 근거: design/StickyNote App.dc.html (버전 2) N-01~N-04 · M-01~M-06 예시.
+ * 레이아웃 근거(유휴 상태 등 버전 2가 다시 그리지 않은 부분)는 버전 1
+ * (design/Sticky Notes for Windows.dc.html) 37~121행 · 264~268행을 그대로 따른다.
  *
  * M0 스파이크 결론(확정)대로 구현한다:
  *   투명도      CSS opacity — **종이 루트 엘리먼트**에 건다. 창 자체가 아니다
- *   라운드 코너  CSS border-radius 10px + DWMWA_WINDOW_CORNER_PREFERENCE=DONOTROUND
- *   그림자      **폐기.** 창 = 종이, 사방 여백 0 (2026-07-26 사용자 지시 · note.css 머리말)
+ *   라운드 코너  CSS border-radius 3px(2026-08-03 v2: 10px→3px) + DONOTROUND
+ *   그림자      2026-08-03 v2에서 종이색 틴트 그림자로 되살렸다(note.css 참조) —
+ *               다만 창에 여백이 없어 지금은 창 경계에서 잘려 보이지 않는다
+ *               (2026-07-26 사용자 지시로 여백 자체는 폐기, note.css 머리말 참조)
  * 네이티브 폴백(`setWindowOpacity`)은 존재하지만 쓰지 않는다.
  *
- * **소유: 트랙 C (M1 · M4).**
+ * **소유: 트랙 C (M1 · M4) · 2026-08-03 2단계는 A트랙이 시각만 리스킨.**
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -591,7 +595,7 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
               //
               // 예전에는 여기서 `startDragging()` 을 걸었다. 그런데 이 여백은 사실상
               // 에디터의 패딩이라, 본문 옆이나 마지막 줄 아래를 눌렀을 때 창이 끌려가고
-              // 커서는 생기지 않았다(신고 #1). 창 이동은 컨트롤 바(38px)와 저장 푸터에
+              // 커서는 생기지 않았다(신고 #1). 창 이동은 컨트롤 바(32px)와 저장 푸터에
               // 그대로 남아 있다.
               if (e.button !== 0 || e.target !== e.currentTarget) return
               e.preventDefault()
@@ -625,30 +629,45 @@ export default function NoteWindow({ noteId, opacityOverride }: NoteWindowProps)
           )}
 
           {update && !updateDismissed && (
-            <div className="note-alert note-alert--update" role="status">
-              <span className="note-alert__dot" />
-              <span className="note-alert__text">
-                새 버전 {update.version} 이 있습니다
-                <span className="note-alert__keys">현재 {update.currentVersion}</span>
+            /* design "업데이트 알림 · 3단계" 토스트 카드 참고 리스킨 — 상태 전이는
+               그대로다(note.css ".note-update" 절 참조): installing=false → "준비
+               완료"(악센트 아이콘 + 체크), installing=true → "다운로드 중"(중립 아이콘).
+               진행률(%) 데이터가 없어 만들어 넣지 않았다. */
+            <div className="note-update" role="status">
+              <span className={`note-update__icon${installing ? '' : ' is-ready'}`}>
+                {installing ? '' : '✓'}
               </span>
-              <button
-                type="button"
-                className="note-alert__dismiss"
-                disabled={installing}
-                onClick={onInstallUpdate}
-              >
-                {installing ? '설치 중…' : '설치'}
-              </button>
-              <button
-                type="button"
-                className="note-alert__dismiss"
-                onClick={() => {
-                  setUpdateDismissed(true)
-                  returnFocusToEditor()
-                }}
-              >
-                나중에
-              </button>
+              <span className="note-update__body">
+                <span className="note-update__title">
+                  {installing ? '업데이트 설치 중' : `새 버전 ${update.version}이 있습니다`}
+                </span>
+                <span className="note-update__desc">
+                  {installing
+                    ? '잠시 후 자동으로 다시 시작합니다.'
+                    : '설치하면 앱이 다시 시작됩니다.'}
+                </span>
+                <span className="note-update__keys">현재 {update.currentVersion}</span>
+                <span className="note-update__actions">
+                  <button
+                    type="button"
+                    className="note-update__btn note-update__btn--primary"
+                    disabled={installing}
+                    onClick={onInstallUpdate}
+                  >
+                    {installing ? '설치 중…' : '설치'}
+                  </button>
+                  <button
+                    type="button"
+                    className="note-update__btn note-update__btn--ghost"
+                    onClick={() => {
+                      setUpdateDismissed(true)
+                      returnFocusToEditor()
+                    }}
+                  >
+                    나중에
+                  </button>
+                </span>
+              </span>
             </div>
           )}
 

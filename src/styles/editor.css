@@ -1,11 +1,15 @@
 /*
  * 메모 본문 에디터(CodeMirror 6) 라이브 프리뷰 스타일.
  *
- * 소유: 트랙 B (M3). `NoteEditor.tsx`가 import 한다.
- * `global.css`는 다른 트랙 소유이므로 건드리지 않는다.
+ * 소유: 트랙 B (M3). 2026-08-03 디자인 v2 2단계는 A트랙(노트 창 리스킨)이 색만
+ * 갱신했다 — 위젯 구조·DOM 조작 방식은 그대로다(CLAUDE.md 절대규칙 3·4).
+ * `NoteEditor.tsx`가 import 한다. `global.css`는 다른 트랙 소유이므로 건드리지 않는다.
  *
  * 색·치수는 전부 `tokens.css` 변수다.
- * 근거: design/Sticky Notes for Windows.dc.html (행 번호를 각 항목에 적어 둔다)
+ * 근거: design/Sticky Notes for Windows.dc.html (버전 1, 행 번호는 각 항목에 적어
+ * 둔다 — 체크박스·코드블록·위키링크 렌더 규칙은 버전 2가 다시 그리지 않아 유효하다).
+ * 색 값 자체(체크박스 완료색·체크마크·코드 하이라이트 등)는 버전 2가 최종 근거다 —
+ * `design/README.md` 참조.
  */
 
 /* ── 컨테이너 ───────────────────────────────────────────── */
@@ -43,8 +47,11 @@
 
 .cm-task-checkbox-done::after {
   content: '✓';
-  /* 디자인 74행 color:#fff */
-  color: var(--on-accent);
+  /* 2026-08-03 디자인 v2 M-04(132/133행): 체크마크는 순백이 아니라
+     oklch(0.98 0.01 130) — 채움색(--green-done, hue150)에 맞춰 톤을 살짝 맞춘
+     거의-흰색이다. tokens.css의 --checkbox-check 참조(닫기 hover 등에 쓰는 범용
+     --on-accent와는 별개 토큰). */
+  color: var(--checkbox-check);
   font-size: 10px;
   line-height: 1;
 }

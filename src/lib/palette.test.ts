@@ -51,10 +51,11 @@ describe('팔레트', () => {
     expect(paletteOf(5).name).toBe('white')
   })
 
-  it('paletteStyle이 종이/크롬 CSS 변수를 내보낸다', () => {
+  it('paletteStyle이 종이/크롬/그림자 CSS 변수를 내보낸다', () => {
     expect(paletteStyle(2)).toEqual({
       '--paper-bg': 'oklch(0.93 0.05 195)',
       '--chrome-bg': 'oklch(0.965 0.03 195 / 0.85)',
+      '--shadow-note': 'var(--shadow-paper-2)',
     })
   })
 

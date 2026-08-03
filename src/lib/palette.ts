@@ -103,13 +103,18 @@ export function chromeColor(index: number | null | undefined): string {
 
 /**
  * 현재 메모 색을 CSS 변수로 노출한다.
- * 컴포넌트는 `--paper-bg` / `--chrome-bg`만 참조하면 된다.
+ * 컴포넌트는 `--paper-bg` / `--chrome-bg` / `--shadow-note`만 참조하면 된다.
+ *
+ * 2026-08-03 2단계(A트랙) — `--shadow-note`도 같은 패턴으로 추가했다. 종이색마다
+ * 그림자 색조(hue)가 달라야 하므로(tokens.css "그림자" 절 — `--shadow-paper-0..5`),
+ * 그 중 현재 색 인덱스에 해당하는 것을 가리키게 한다.
  */
 export function paletteStyle(index: number | null | undefined): Record<string, string> {
   const p = paletteOf(index)
   return {
     '--paper-bg': p.paper,
     '--chrome-bg': p.chrome,
+    '--shadow-note': `var(--shadow-paper-${p.index})`,
   }
 }
 

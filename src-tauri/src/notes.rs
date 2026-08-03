@@ -858,6 +858,7 @@ pub fn save_note<R: Runtime>(
     body: String,
 ) -> CmdResult<SaveResult> {
     let result = db.with(|c| save_note_in(c, &id, &body))?;
+    crate::windows::set_note_window_title(&app, &id, &result.title);
     emit_notes_changed(&app);
     Ok(result)
 }

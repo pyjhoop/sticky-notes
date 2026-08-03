@@ -89,6 +89,8 @@ pub fn ensure_note_window<R: Runtime>(
     // 저장된 위치로 옮긴 뒤에 보여준다 — 기본 위치에서 튀는 것을 막는다
     cfg.visible = false;
     cfg.url = WebviewUrl::App(format!("index.html?w=note&id={id}").into());
+    // 작업 표시줄 그룹 미리보기에서 메모를 구분하는 용도 — 전부 같은 라벨이면 안 보인다.
+    cfg.title = window_title_for(app, id);
 
     let window = WebviewWindowBuilder::from_config(app, &cfg)
         .map_err(|e| format!("메모 창 빌더 생성 실패: {e}"))?
@@ -103,6 +105,25 @@ pub fn ensure_note_window<R: Runtime>(
 
     let _ = window.show();
     Ok(window)
+}
+
+/// 창 생성 시 초기 제목 — 본문에서 파생된 제목. 조회 실패해도 창 생성은 막지 않는다.
+fn window_title_for<R: Runtime>(app: &AppHandle<R>, id: &str) -> String {
+    app.state::<Db>()
+        .with(|c| crate::notes::get_note_in(c, id))
+        .ok()
+        .flatten()
+        .map(|n| n.title)
+        .unwrap_or_else(|| "스티커 메모".to_string())
+}
+
+/// 저장 후 작업 표시줄 제목을 갱신한다 — 그룹 미리보기에서 메모를 구분하는 용도.
+pub fn set_note_window_title<R: Runtime>(app: &AppHandle<R>, id: &str, title: &str) {
+    if let Some(w) = app.get_webview_window(&note_label(id)) {
+        if let Err(e) = w.set_title(title) {
+            eprintln!("[windows] 창 제목 갱신 실패({id}): {e}");
+        }
+    }
 }
 
 /// 저장된 지오메트리를 현재 모니터 구성에 맞춰 되돌린다.

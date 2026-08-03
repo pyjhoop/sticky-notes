@@ -24,6 +24,7 @@
 | **캐럿 가시성 재발** (신고 #1 재발) | — | 🟡 **검증 PASS · main 병합 — 사용자 실기 확인 대기** | `fix/caret-visibility` | 2026-07-26 |
 | **스크롤바 축소** | — | 🟡 **main 병합 — 사용자 실기 확인 대기** (검증 생략) | `fix/scrollbar` | 2026-07-26 |
 | **코드블록 언어별 스타일 · 줄 맨앞 캐럿 · 현재 줄 강조 제거** | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** (검증 생략) | `fix/editor-polish` | 2026-07-26 |
+| **보드 폴더뷰** (카드 그리드 → 폴더 사이드바 + 리스트, 휴지통 14일 자동삭제) | — | 🟡 **리더가 직접 build/test/clippy 확인 후 main 병합 — 사용자 실기 확인 대기** (검증 에이전트 스폰이 auto-mode classifier에 막혀 리더가 대신 확인) | `main` (구 `worktree-agent-ab5bb952a35b1a884`) | 2026-08-03 |
 
 > **2026-07-26 사용자 지시 — 이 세션 한정, 검증 에이전트 생략.**
 > 속도 문제로 구현 → 검증 루프의 **검증 단계를 건너뛴다.** 구현 에이전트가 `npm run build` · `npm test` 를
@@ -304,6 +305,10 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-07-26 | `src/styles/tokens.css` | `--scrollbar-w: 8px` / `--scrollbar-thumb-w: 4px` / `--scrollbar-thumb-w-hover: 6px` **추가** | 스크롤바 축소 작업이 동결 규칙을 지키느라 `var(--scrollbar-w, 8px)` 폴백으로 돌려 뒀다 — 치수 3개가 `theme.ts`(종이)와 `board.css`(다크 크롬) **두 곳에 각각 박혀** 한쪽만 고치면 두 창의 스크롤바 굵기가 조용히 어긋난다. 토큰으로 올리고 폴백을 걷어내 근거를 한 곳으로 모았다. 순수 추가라 기존 변수 불변 |
 | 2026-07-26 | `src/styles/tokens.css` | `--caret-w: 1.5px` / `--active-line-bg` / `--active-line-bg-focused` **추가** | 캐럿 재발 수정의 검증에서 **토큰 의미 오용 3건** 적발. 구현 에이전트가 동결 규칙을 지키느라 `--checkbox-border-w`(체크박스 테두리)를 캐럿 굵기로, `--footer-bg`(푸터 배경)·`--paper-divider`(본문 구분선)를 현재 줄 강조로 재사용했다 — 나중에 체크박스 테두리를 조정하면 캐럿 굵기가 조용히 따라 바뀐다. 리더가 순수 추가로 해소. 기존 변수 불변 |
 | 2026-07-26 | `src/styles/tokens.css` | `--selection-bg-code` **추가** | 사용자 신고 "마크다운 내에서 캐럿이 안 보인다 — 다크 모드여서". **캐럿**은 기존 `--code-fg` 재사용으로 끝났다(종이에서 캐럿이 본문색 `--ink` 인 것과 같은 규칙이라 새 토큰이 필요 없다). 문제는 **선택 영역**이었다 — `--selection-bg` 는 악센트 알파 25% 라 밝은 종이 기준이고, `--code-bg`(#2a2521) 위에 합성하면 rgb(32,54,73)·대비 **1.22:1** 로 배경과 사실상 구분되지 않는다. 같은 코드 팔레트의 `--code-function`(#7cb7f5)을 알파 30% 로 깐 1.86:1 값을 새 토큰으로 뽑았다. 알파 합성색은 호출부에서 만들 수 없고(색 하드코딩 금지) 기존 토큰 중 어두운 배경용 선택색이 없으므로 토큰 추가가 유일한 경로다. 순수 추가라 기존 변수 불변 |
+| 2026-08-03 | `src-tauri/src/lib.rs` | `pub mod folders;` + 커맨드 8개(`list_folders`/`create_folder`/`rename_folder`/`delete_folder`/`move_notes_to_folder`/`soft_delete_notes`/`restore_notes`/`permanently_delete_notes`) 등록, `setup()`에 `folders::purge_on_startup(app)` 추가 | 보드 폴더뷰 신기능. 새 모듈이라 기존 커맨드 시그니처 불변. `purge_on_startup`은 휴지통 14일 자동 영구삭제(실패해도 앱 기동 안 막음) |
+| 2026-08-03 | `src/lib/ipc.ts` | `Note`/`NoteSummary`에 `folderId` 추가, `NoteSummary`에 `createdAt`/`deletedAt` 추가, `Folder` 타입 신설, 위 8개 커맨드 래퍼 추가, `exportMarkdown`에 옵셔널 4번째 인자 `ids?: string[]` 추가 | 보드 폴더뷰가 폴더별/휴지통 필터·정렬·선택 내보내기를 하려면 필요. 전부 순수 추가(옵셔널 필드/인자)라 기존 필드·호출부(`SettingsWindow.tsx`) 불변 |
+| 2026-08-03 | `src-tauri/tauri.conf.json` | board 창 `width` 940→**1040**, `height` 452→**640**, `minWidth` 640→**760**, `minHeight` 360→**480** | 카드 그리드 → 폴더 사이드바 + 리스트 뷰 개편으로 캔버스가 더 필요해짐 |
+| 2026-08-03 | `src/styles/tokens.css` | `--board-w`/`--board-h` 값 갱신(1040/640), `--board-sidebar-w`·`--board-row-pad-y`·`--board-row-pad-x`·`--board-row-gap`·`--board-badge-h` **추가** | 위와 같은 건. 사이드바 폭·리스트 행 치수는 기존 토큰으로 표현이 안 돼 순수 추가. 옛 카드 그리드 토큰(`--card-h` 등)은 사용처가 없어졌지만 삭제 요청은 없었으므로 남겨둠 |
 
 ### 계약을 바꿔야 할 때
 

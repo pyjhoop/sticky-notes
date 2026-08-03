@@ -47,6 +47,8 @@ pub struct Note {
     pub created_at: String,
     pub updated_at: String,
     pub deleted_at: Option<String>,
+    /// 소속 폴더. `None`이면 미분류. `folders.id`를 가리킨다
+    pub folder_id: Option<String>,
 }
 
 /// 보드 카드용 축약 뷰 (body는 미리보기 길이로 잘린다).
@@ -61,6 +63,12 @@ pub struct NoteSummary {
     pub pinned: bool,
     pub updated_at: String,
     pub tags: Vec<String>,
+    /// 소속 폴더. `None`이면 미분류
+    pub folder_id: Option<String>,
+    /// RFC3339 — 보드 리스트 뷰의 "생성일" 정렬에 쓰인다
+    pub created_at: String,
+    /// 있으면 휴지통에 있는 메모다 — 보드 리스트 뷰가 이걸로 휴지통 여부를 판단한다
+    pub deleted_at: Option<String>,
 }
 
 /// 부분 갱신용. `None`인 필드는 건드리지 않는다.
@@ -482,7 +490,7 @@ pub fn now_rfc3339() -> String {
 // ─────────────────────────────────────────────────────────────
 
 const NOTE_COLUMNS: &str =
-    "id, title, body, color, opacity, pinned, open, created_at, updated_at, deleted_at";
+    "id, title, body, color, opacity, pinned, open, created_at, updated_at, deleted_at, folder_id";
 
 fn row_to_note(r: &Row<'_>) -> rusqlite::Result<Note> {
     Ok(Note {
@@ -496,6 +504,7 @@ fn row_to_note(r: &Row<'_>) -> rusqlite::Result<Note> {
         created_at: r.get(7)?,
         updated_at: r.get(8)?,
         deleted_at: r.get(9)?,
+        folder_id: r.get(10)?,
     })
 }
 
@@ -545,6 +554,9 @@ fn summaries_from(conn: &Connection, notes: Vec<Note>) -> Result<Vec<NoteSummary
             open: n.open,
             pinned: n.pinned,
             updated_at: n.updated_at,
+            folder_id: n.folder_id,
+            created_at: n.created_at,
+            deleted_at: n.deleted_at,
         })
         .collect())
 }
@@ -569,10 +581,11 @@ pub fn create_note_in(conn: &Connection, color: Option<ColorIndex>) -> Result<No
         created_at: now.clone(),
         updated_at: now,
         deleted_at: None,
+        folder_id: None,
     };
     conn.execute(
-        "INSERT INTO notes(id,title,body,color,opacity,pinned,open,created_at,updated_at,deleted_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,NULL)",
+        "INSERT INTO notes(id,title,body,color,opacity,pinned,open,created_at,updated_at,deleted_at,folder_id)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,NULL,NULL)",
         params![
             note.id,
             note.title,

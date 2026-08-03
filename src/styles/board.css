@@ -236,7 +236,7 @@ body:not([data-backdrop]) .dark-window {
 }
 
 /* ═══════════════════════════════════════════════════════════
- * 보드 — 툴바 (검색 · 필터 칩 · 상태)
+ * 보드 — 툴바 (검색 · 정렬 탭 · 선택/새 메모)
  * ═══════════════════════════════════════════════════════════ */
 
 .board__toolbar {
@@ -245,6 +245,7 @@ body:not([data-backdrop]) .dark-window {
   align-items: center;
   gap: 10px;
   padding: 12px var(--board-pad);
+  border-bottom: 1px solid var(--dark-divider);
 }
 
 /* ── 실패 알림 ────────────────────────────────────────────
@@ -256,7 +257,7 @@ body:not([data-backdrop]) .dark-window {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin: 0 var(--board-pad);
+  margin: 10px var(--board-pad) 0;
   padding: 9px 12px;
   border-radius: var(--radius-field);
   background: var(--dark-field-bg);
@@ -272,8 +273,8 @@ body:not([data-backdrop]) .dark-window {
 }
 
 .board__search {
-  flex: 1;
-  max-width: 320px;
+  flex: none;
+  width: 220px;
   height: var(--search-h);
   display: flex;
   align-items: center;
@@ -307,30 +308,36 @@ body:not([data-backdrop]) .dark-window {
   color: var(--dark-placeholder);
 }
 
-.board__filters {
+.board__result-count {
+  flex: none;
+  font-size: var(--fs-small);
+  color: var(--dark-placeholder);
+  white-space: nowrap;
+}
+
+.board__sort {
+  flex: none;
   display: flex;
-  gap: 5px;
+  gap: 2px;
 }
 
-.board__chip {
-  width: var(--filter-chip);
-  height: var(--filter-chip);
-  border-radius: var(--radius-chip);
-  opacity: 0.4;
-  transition: opacity 120ms var(--fade-ease), box-shadow 120ms var(--fade-ease);
+.board__sort-btn {
+  padding: 5px 10px;
+  border-radius: var(--radius-field);
+  font-size: var(--fs-small);
+  color: var(--dark-text-3);
+  white-space: nowrap;
+  transition: background-color 120ms var(--fade-ease), color 120ms var(--fade-ease);
 }
 
-.board__chip[aria-pressed='true'] {
-  opacity: 1;
-  box-shadow: 0 0 0 2px var(--accent);
+.board__sort-btn:hover {
+  background: var(--dark-hover);
+  color: var(--dark-text-2);
 }
 
-.board__chip:hover {
-  opacity: 0.75;
-}
-
-.board__chip[aria-pressed='true']:hover {
-  opacity: 1;
+.board__sort-btn[aria-pressed='true'] {
+  background: var(--dark-btn-bg);
+  color: var(--dark-text);
 }
 
 .board__spacer {
@@ -380,22 +387,162 @@ body:not([data-backdrop]) .dark-window {
   background: var(--green-done);
 }
 
+/* 선택 상태 — 체크된 행이 있으면 `+ 새 메모`/상태 문구 자리를 이걸로 갈아 끼운다 */
+.board__selection {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.board__selection-count {
+  font-size: var(--fs-meta);
+  color: var(--dark-text-2);
+  white-space: nowrap;
+}
+
 /* ═══════════════════════════════════════════════════════════
- * 보드 — 카드 그리드
+ * 보드 — 레이아웃 (사이드바 + 리스트)
  * ═══════════════════════════════════════════════════════════ */
 
-.board__grid {
+.board__layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+/* ── 사이드바 — 폴더 · 미분류 · 휴지통 ─────────────────────── */
+
+.board__sidebar {
+  flex: none;
+  width: var(--board-sidebar-w);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--dark-divider);
+}
+
+.board__sidebar-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* 카드가 한 화면을 넘기는 순간 그리드 폭이 줄어 카드가 다시 배치되는 것을 막는다 —
-     스크롤바 폭을 처음부터 예약해 둔다 (겉모습은 위 "공용 — 스크롤바"). */
   scrollbar-gutter: stable;
-  display: grid;
-  grid-template-columns: repeat(var(--board-cols), 1fr);
-  gap: var(--board-gap);
-  align-content: start;
-  padding: 2px var(--board-pad) var(--board-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px 8px;
+}
+
+.board__sidebar .mono-label {
+  padding: 0 8px;
+  margin-bottom: 4px;
+}
+
+.board__folder-row {
+  display: flex;
+}
+
+.board__folder-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-field);
+  font-size: var(--fs-body-sm);
+  color: var(--dark-text-2);
+  text-align: left;
+  transition: background-color 120ms var(--fade-ease), color 120ms var(--fade-ease);
+}
+
+.board__folder-item:hover {
+  background: var(--dark-hover);
+}
+
+.board__folder-item[data-active='true'] {
+  background: var(--dark-hover);
+  color: var(--accent);
+}
+
+.board__folder-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.55;
+}
+
+.board__folder-item[data-active='true'] .board__folder-dot {
+  opacity: 1;
+}
+
+.board__folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board__folder-count {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-value);
+  color: var(--dark-text-3);
+}
+
+.board__folder-item[data-active='true'] .board__folder-count {
+  color: var(--accent);
+}
+
+.board__sidebar-divider {
+  flex: none;
+  height: 1px;
+  margin: 6px 8px;
+  background: var(--dark-divider);
+}
+
+.board__folder-item--trash {
+  font-size: 12px;
+}
+
+.board__new-folder {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  margin-top: 2px;
+  padding: 0 8px;
+  border-radius: var(--radius-field);
+  font-size: var(--fs-body-sm);
+  color: var(--dark-text-3);
+  transition: background-color 120ms var(--fade-ease), color 120ms var(--fade-ease);
+}
+
+.board__new-folder:hover {
+  background: var(--dark-hover);
+  color: var(--dark-text-2);
+}
+
+/* ── 메인 — 리스트 + 푸터 ──────────────────────────────────── */
+
+.board__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.board__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
 }
 
 .board__empty {
@@ -408,67 +555,128 @@ body:not([data-backdrop]) .dark-window {
   color: var(--dark-text-3);
 }
 
-.board__card {
-  height: var(--card-h);
+.board__row {
+  flex: none;
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: var(--card-pad-y) var(--card-pad-x);
-  border-radius: var(--radius-card);
-  color: var(--card-ink);
-  text-align: left;
-  box-shadow: var(--shadow-card);
-  transition: transform 120ms var(--fade-ease), box-shadow 120ms var(--fade-ease);
+  align-items: flex-start;
+  gap: 10px;
+  padding: var(--board-row-pad-y) var(--board-row-pad-x);
+  border-bottom: 1px solid var(--dark-divider);
+  transition: background-color 120ms var(--fade-ease);
 }
 
-.board__card:hover {
-  transform: translateY(var(--card-hover-lift));
+.board__row:hover {
+  background: var(--dark-hover);
 }
 
-.board__card-title {
-  font-size: var(--fs-meta);
-  font-weight: var(--fw-bold);
-  line-height: var(--lh-title);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.board__row--selected {
+  background: var(--dark-field-bg);
 }
 
-.board__card-preview {
-  flex: 1;
-  min-height: 0;
-  overflow: hidden;
-  font-size: var(--fs-small);
-  line-height: var(--lh-body);
-  opacity: 0.66;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.board__card-meta {
+.board__row-check {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-tiny);
-  color: var(--on-paper-faint);
+  height: 20px;
 }
 
-.board__card-dot {
+.board__row-check input {
+  width: var(--checkbox-sm);
+  height: var(--checkbox-sm);
+  accent-color: var(--accent);
+}
+
+.board__row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--board-row-gap);
+}
+
+.board__row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.board__row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-bold);
+  color: var(--dark-text);
+}
+
+.board__badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--board-badge-h);
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--dark-field-bg);
+  font-size: var(--fs-small);
+  color: var(--dark-text-3);
+  white-space: nowrap;
+}
+
+.board__badge-dot {
+  flex: none;
   width: 5px;
   height: 5px;
-  flex: none;
   border-radius: 50%;
+  background: var(--green-done);
+}
+
+.board__row-time {
+  flex: none;
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-value);
+  color: var(--dark-text-3);
+  white-space: nowrap;
+}
+
+.board__row-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-small);
+  color: var(--dark-text-3);
+}
+
+.board__row-actions {
+  flex: none;
+  align-self: center;
+  display: flex;
+  gap: 6px;
+}
+
+/* ── 푸터 ──────────────────────────────────────────────────── */
+
+.board__footer {
+  flex: none;
+  padding: 9px var(--board-pad);
+  border-top: 1px solid var(--dark-divider);
+  font-size: var(--fs-small);
+  color: var(--dark-placeholder);
 }
 
 /* ═══════════════════════════════════════════════════════════
- * 보드 — 우클릭 메뉴 (디자인의 트레이 메뉴 스타일 재사용, line 285-292)
+ * 보드 — 팝업 메뉴 (우클릭 컨텍스트 메뉴 · 폴더 이동)
+ * 디자인의 트레이 메뉴 스타일 재사용 (line 285-292)
  * ═══════════════════════════════════════════════════════════ */
 
 .board__menu {
   position: fixed;
   z-index: 20;
   min-width: 140px;
+  max-height: 260px;
+  overflow-y: auto;
   padding: 5px 0;
   border-radius: var(--radius-tray);
   background: var(--dark-bg-tray);
@@ -484,6 +692,7 @@ body:not([data-backdrop]) .dark-window {
   font-size: var(--fs-meta);
   color: var(--dark-text-menu);
   text-align: left;
+  white-space: nowrap;
 }
 
 .board__menu button:hover {

@@ -44,6 +44,8 @@ export interface Note {
   createdAt: string
   updatedAt: string
   deletedAt: string | null
+  /** 소속 폴더. `null`이면 미분류 */
+  folderId: string | null
 }
 
 /** 보드 카드용 축약 뷰. */
@@ -56,6 +58,20 @@ export interface NoteSummary {
   pinned: boolean
   updatedAt: string
   tags: string[]
+  /** 소속 폴더. `null`이면 미분류 — 보드 리스트 뷰의 사이드바 필터에 쓰인다 */
+  folderId: string | null
+  /** RFC3339 — 보드 리스트 뷰의 "생성일" 정렬 */
+  createdAt: string
+  /** 있으면 휴지통에 있는 메모다 */
+  deletedAt: string | null
+}
+
+/** 보드 리스트 뷰의 실제 폴더. `전체`/`미분류`/`휴지통`은 가상 폴더라 여기 없다. */
+export interface Folder {
+  id: string
+  name: string
+  sortOrder: number
+  createdAt: string
 }
 
 /** 부분 갱신. `undefined`인 필드는 건드리지 않는다. */
@@ -258,6 +274,47 @@ export function searchNotes(query: SearchQuery): Promise<NoteSummary[]> {
 }
 
 // ─────────────────────────────────────────────────────────────
+// folders — 보드 리스트 뷰 (폴더 사이드바 + 휴지통)
+// ─────────────────────────────────────────────────────────────
+
+export function listFolders(): Promise<Folder[]> {
+  return call('list_folders')
+}
+
+export function createFolder(name: string): Promise<Folder> {
+  return call('create_folder', { name })
+}
+
+export function renameFolder(id: string, name: string): Promise<Folder> {
+  return call('rename_folder', { id, name })
+}
+
+/** 폴더를 지운다. 그 폴더의 메모는 미분류로 되돌아간다(메모 자체는 지워지지 않는다). */
+export function deleteFolder(id: string): Promise<void> {
+  return call('delete_folder', { id })
+}
+
+/** `folderId: null`은 "미분류로 이동"을 뜻한다. */
+export function moveNotesToFolder(ids: string[], folderId: string | null): Promise<void> {
+  return call('move_notes_to_folder', { ids, folderId })
+}
+
+/** 여러 메모를 한 번에 휴지통으로 보낸다(soft delete) — 떠 있는 창도 같이 닫힌다. */
+export function softDeleteNotes(ids: string[]): Promise<void> {
+  return call('soft_delete_notes', { ids })
+}
+
+/** 휴지통에서 복원한다. 있던 폴더로 그대로 돌아간다. */
+export function restoreNotes(ids: string[]): Promise<void> {
+  return call('restore_notes', { ids })
+}
+
+/** 휴지통에서 완전히 지운다 — 되돌릴 수 없다. */
+export function permanentlyDeleteNotes(ids: string[]): Promise<void> {
+  return call('permanently_delete_notes', { ids })
+}
+
+// ─────────────────────────────────────────────────────────────
 // settings
 // ─────────────────────────────────────────────────────────────
 
@@ -362,8 +419,13 @@ export function applyWindowBackdrop(): Promise<Backdrop> {
 // export — 트랙 A (M6)
 // ─────────────────────────────────────────────────────────────
 
-export function exportMarkdown(dir: string, datePrefix: boolean): Promise<ExportResult> {
-  return call('export_markdown', { dir, datePrefix })
+/** `ids`를 주면 그 메모들만(삭제 여부 무관) 내보낸다. 생략하면 기존 동작(삭제 안 된 전체). */
+export function exportMarkdown(
+  dir: string,
+  datePrefix: boolean,
+  ids?: string[],
+): Promise<ExportResult> {
+  return call('export_markdown', { dir, datePrefix, ids })
 }
 
 export function backupDb(dir?: string): Promise<string> {

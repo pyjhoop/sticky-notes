@@ -25,6 +25,7 @@
 | **스크롤바 축소** | — | 🟡 **main 병합 — 사용자 실기 확인 대기** (검증 생략) | `fix/scrollbar` | 2026-07-26 |
 | **코드블록 언어별 스타일 · 줄 맨앞 캐럿 · 현재 줄 강조 제거** | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** (검증 생략) | `fix/editor-polish` | 2026-07-26 |
 | **보드 폴더뷰** (카드 그리드 → 폴더 사이드바 + 리스트, 휴지통 14일 자동삭제) | — | 🟡 **리더가 직접 build/test/clippy 확인 후 main 병합 — 사용자 실기 확인 대기** (검증 에이전트 스폰이 auto-mode classifier에 막혀 리더가 대신 확인) | `main` (구 `worktree-agent-ab5bb952a35b1a884`) | 2026-08-03 |
+| **디자인 v2 전면 개편 — 1단계(토큰)**: oklch 색 체계 전환 · 팔레트 5→6색(+DB 재매핑) · IBM Plex 폰트 | — | 🟡 **1단계(토큰) 완료 — 2단계(컴포넌트 리스킨) 대기.** `npm run build`·`npm test`(187)·`cargo test`(76)·`cargo clippy` 전부 PASS | `main` (구 `worktree-agent-ae54754fafb010b6f`) | 2026-08-03 |
 
 > **2026-07-26 사용자 지시 — 이 세션 한정, 검증 에이전트 생략.**
 > 속도 문제로 구현 → 검증 루프의 **검증 단계를 건너뛴다.** 구현 에이전트가 `npm run build` · `npm test` 를
@@ -309,6 +310,10 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-08-03 | `src/lib/ipc.ts` | `Note`/`NoteSummary`에 `folderId` 추가, `NoteSummary`에 `createdAt`/`deletedAt` 추가, `Folder` 타입 신설, 위 8개 커맨드 래퍼 추가, `exportMarkdown`에 옵셔널 4번째 인자 `ids?: string[]` 추가 | 보드 폴더뷰가 폴더별/휴지통 필터·정렬·선택 내보내기를 하려면 필요. 전부 순수 추가(옵셔널 필드/인자)라 기존 필드·호출부(`SettingsWindow.tsx`) 불변 |
 | 2026-08-03 | `src-tauri/tauri.conf.json` | board 창 `width` 940→**1040**, `height` 452→**640**, `minWidth` 640→**760**, `minHeight` 360→**480** | 카드 그리드 → 폴더 사이드바 + 리스트 뷰 개편으로 캔버스가 더 필요해짐 |
 | 2026-08-03 | `src/styles/tokens.css` | `--board-w`/`--board-h` 값 갱신(1040/640), `--board-sidebar-w`·`--board-row-pad-y`·`--board-row-pad-x`·`--board-row-gap`·`--board-badge-h` **추가** | 위와 같은 건. 사이드바 폭·리스트 행 치수는 기존 토큰으로 표현이 안 돼 순수 추가. 옛 카드 그리드 토큰(`--card-h` 등)은 사용처가 없어졌지만 삭제 요청은 없었으므로 남겨둠 |
+| 2026-08-03 | `src/styles/tokens.css` | **디자인 v2 전면 개편(1단계)** — 색 체계 hex→`oklch()` 전환, 팔레트 5→6색(`--paper-5`/`--chrome-5` 추가), 폰트 IBM Plex, 라운드·타이틀바/컨트롤바 높이·토글·보드 사이드바 등 다수 치수 갱신, 신규 토큰(`--board-row-accent-w`·`--board-footer-h`·`--keycap-*` 5종) 추가 | 사용자가 디자인 전면 개편(`design/StickyNote App.dc.html`, 버전 2)을 요청. 값 하나하나의 디자인 출처·판단 근거는 파일 내 블록 주석 참조. **미반영 발견 사항(2단계 판단 필요)**: ① 다크 크롬(보드·설정·트레이) 절 — v2 목업은 이 세 창을 밝은 배경으로 그렸다("코드블록만 다크 서피스" 명시), 다크→라이트 전환 여부는 컴포넌트 리스킨의 몫이라 토큰은 그대로 뒀다. ② 그림자 — v2는 종이색 틴트 2겹 패턴(`--chrome-N`처럼 색상별 파생 필요), 순수 검정 유지. ③ 보드 620×640 vs 실제(conf.json) 640×640, 설정 560×700 vs 실제 620×640 — 목업과 `tauri.conf.json` 실측이 어긋나 계약 변경 없이는 못 바꿔서 그대로 뒀다 |
+| 2026-08-03 | `src-tauri/src/db.rs` | `m003_repalette` 마이그레이션 **추가** (MIGRATIONS 배열 뒤) | 팔레트 5→6색 재매핑. 구 인덱스 1~4를 hue 거리 기준 신 인덱스로 이동(`0→0,1→4,2→2,3→1,4→3`), 근거는 함수 문서 주석. `LATEST_VERSION`이 자동으로 3이 된다 — 기존 스키마·데이터는 그대로, **뒤로만 추가**하는 관례를 지켰다 |
+| 2026-08-03 | `src-tauri/src/notes.rs` | `COLOR_MAX` 4→**5** | 6색 팔레트에 맞춰 클램프 상한 확장. `create_note_in`/`set_note_meta_in`/`search_notes_in`의 `color.min(COLOR_MAX)` 클램프가 0..5를 허용하도록 자동 반영 |
+| 2026-08-03 | `src/lib/palette.ts` | `ColorIndex` 5리터럴 유니온으로 확장, `PALETTE` 6개 항목(oklch 문자열), `normalizeColor` 상한 4→5 | 위와 같은 건. `ACCENTS`/`Accent`/`DEFAULT_ACCENT`는 **의도적으로 hex 그대로 유지** — `src-tauri/src/db.rs`의 `ACCENT_OPTIONS`와 exact-match로 검증되는 저장 식별자라, oklch로 바꾸면 기존 사용자의 저장된 accent 설정이 깨진다 |
 
 ### 계약을 바꿔야 할 때
 

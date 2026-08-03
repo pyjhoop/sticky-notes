@@ -80,7 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_links_target   ON links(target);
 type Migration = fn(&rusqlite::Transaction<'_>) -> rusqlite::Result<()>;
 
 /// **뒤로만 추가한다.** 이미 배포된 항목을 고치면 기존 DB가 깨진다.
-const MIGRATIONS: &[Migration] = &[m001_initial, m002_folders];
+const MIGRATIONS: &[Migration] = &[m001_initial, m002_folders, m003_repalette];
 
 /// 최신 스키마 버전 = 적용된 마이그레이션 개수.
 pub const LATEST_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -105,6 +105,43 @@ fn m002_folders(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
         );
         ALTER TABLE notes ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL;
         CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id);
+        "#,
+    )?;
+    Ok(())
+}
+
+/// 디자인 v2 — 메모 팔레트 5색 → 6색 재매핑 (2026-08-03).
+///
+/// 구 팔레트: 0 yellow · 1 pink · 2 blue · 3 green · 4 purple
+/// 신 팔레트: 0 yellow · 1 lime · 2 mint · 3 blue · 4 lavender · 5 white
+/// (`src/lib/palette.ts`의 `PALETTE` 순서와 동일 — DB의 `notes.color`는 이 인덱스다.)
+///
+/// 매핑은 각 구 색의 hex를 OKLCH로 환산해 뽑은 hue와, 신 팔레트 6색의 확정 hue
+/// (yellow 95° · lime 130° · mint 195° · blue 265° · lavender 320° · white 무채색)
+/// 사이의 최소 원형 거리로 정했다. yellow(0→0)는 이름 자체가 동일해 항등 매핑이고,
+/// 나머지 4개는 아래처럼 유일한 최근접 짝을 이뤄 충돌이 없다(괄호 안은 hue 차이):
+///
+///   구 1 pink   (hue ≈350) → 신 4 lavender (320°, 차이 24°) — blue(265,79)·mint(195,149)보다 가깝다
+///   구 2 blue   (hue ≈205) → 신 2 mint     (195°, 차이 13°) — 가장 가깝다
+///   구 3 green  (hue ≈100) → 신 1 lime     (130°, 차이 29°) — yellow(95,6°)가 더 가깝지만 0은 이미 씀
+///   구 4 purple (hue ≈260) → 신 3 blue     (265°, 차이  4°) — 가장 가깝다
+///
+/// (구 3 green 하나만 "가장 가까운 색"이 yellow(0)여서 어쩔 수 없이 두 번째로 가까운
+/// lime을 썼다 — yellow는 이미 항등 매핑으로 차지돼 있고, 이 배치가 전체 4개 잔여
+/// 슬롯(lime/mint/blue/lavender)에 대해 충돌 없는 유일한 최근접 대응이다.)
+///
+/// 신 5 white 는 기존 데이터에 대응이 없다(신규 메모만 선택 가능 — 매핑 불필요).
+fn m003_repalette(tx: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
+    tx.execute_batch(
+        r#"
+        UPDATE notes SET color = CASE color
+          WHEN 0 THEN 0
+          WHEN 1 THEN 4
+          WHEN 2 THEN 2
+          WHEN 3 THEN 1
+          WHEN 4 THEN 3
+          ELSE 0
+        END;
         "#,
     )?;
     Ok(())
@@ -463,6 +500,84 @@ mod tests {
         assert_eq!(table_names(&conn).len(), 6);
         let stored = crate::notes::get_note_in(&conn, &note.id).unwrap().unwrap();
         assert_eq!(stored.folder_id, Some(folder.id));
+    }
+
+    /// DoD — m003_repalette: 구 5색 인덱스가 신 6색 인덱스로 정확히 재매핑된다.
+    /// 매핑 근거(hue 거리)는 `m003_repalette`의 문서 주석 참조.
+    ///
+    /// `open_memory()`로 만들면 이미 최신 버전까지 마이그레이션이 끝나버려 m003이
+    /// 검증 대상 데이터에 적용될 기회가 없다(재실행은 no-op). 그래서 **m001·m002까지만
+    /// 직접 적용한 "배포 시점" DB**를 만들고, 거기에 구 팔레트 데이터를 심은 뒤
+    /// `migrate()`로 m003을 최초로 흘려보내는 방식으로 실제 업그레이드 경로를 재현한다.
+    #[test]
+    fn migration_repalettes_existing_notes() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        {
+            let tx = conn.transaction().unwrap();
+            m001_initial(&tx).unwrap();
+            m002_folders(&tx).unwrap();
+            tx.commit().unwrap();
+        }
+        conn.pragma_update(None, "user_version", 2).unwrap();
+
+        // 구 팔레트 인덱스(0..4)를 그대로 흉내낸 메모 5개를 직접 심는다.
+        for (id, old_color) in [("n0", 0), ("n1", 1), ("n2", 2), ("n3", 3), ("n4", 4)] {
+            conn.execute(
+                "INSERT INTO notes(id,title,body,color,opacity,pinned,open,created_at,updated_at)
+                 VALUES(?1,'t','b',?2,96,1,1,'2026-07-26T00:00:00Z','2026-07-26T00:00:00Z')",
+                rusqlite::params![id, old_color],
+            )
+            .unwrap();
+        }
+
+        // 이제 최신 버전까지 올린다 — m003만 새로 적용돼야 한다.
+        migrate(&mut conn).unwrap();
+        assert_eq!(user_version(&conn), LATEST_VERSION);
+
+        let color_of = |conn: &Connection, id: &str| -> i64 {
+            conn.query_row(
+                "SELECT color FROM notes WHERE id = ?1",
+                rusqlite::params![id],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(color_of(&conn, "n0"), 0, "yellow → yellow (항등)");
+        assert_eq!(color_of(&conn, "n1"), 4, "pink → lavender");
+        assert_eq!(color_of(&conn, "n2"), 2, "blue → mint");
+        assert_eq!(color_of(&conn, "n3"), 1, "green → lime");
+        assert_eq!(color_of(&conn, "n4"), 3, "purple → blue");
+
+        // 멱등 — 이미 신 팔레트로 재매핑된 값을 다시 마이그레이션해도 더는 바뀌지 않는다
+        // (PRAGMA user_version이 LATEST_VERSION에 도달했으므로 m003이 재실행되지 않는다).
+        migrate(&mut conn).unwrap();
+        for (id, expected) in [("n0", 0), ("n1", 4), ("n2", 2), ("n3", 1), ("n4", 3)] {
+            assert_eq!(color_of(&conn, id), expected, "재실행 후에도 값이 유지돼야 한다: {id}");
+        }
+    }
+
+    /// m003이 범위 밖 색 값(구 팔레트에 없던 값)을 만나도 죽지 않고 yellow(0)로 접는다.
+    /// `m003_repalette`를 직접 트랜잭션에 태워 확인한다 — 마이그레이션이 이미 끝난
+    /// `open_memory()` DB에 나중에 꽂은 값은 재실행 대상이 아니기 때문이다.
+    #[test]
+    fn migration_repalette_defaults_unknown_color_to_yellow() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA_V1).unwrap();
+        conn.execute(
+            "INSERT INTO notes(id,title,body,color,opacity,pinned,open,created_at,updated_at)
+             VALUES('weird','t','b',99,96,1,1,'2026-07-26T00:00:00Z','2026-07-26T00:00:00Z')",
+            [],
+        )
+        .unwrap();
+
+        let tx = conn.transaction().unwrap();
+        m003_repalette(&tx).unwrap();
+        tx.commit().unwrap();
+
+        let color: i64 = conn
+            .query_row("SELECT color FROM notes WHERE id='weird'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(color, 0, "알 수 없는 색은 yellow(0)로 떨어져야 한다");
     }
 
     /// DoD — 마이그레이션 멱등성: 두 번 돌려도 안전해야 한다.

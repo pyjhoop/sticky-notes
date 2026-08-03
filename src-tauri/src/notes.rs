@@ -15,12 +15,14 @@ use crate::db::Db;
 use crate::windows::emit_notes_changed;
 use crate::CmdResult;
 
-/// 팔레트 인덱스 0..4 (`src/lib/palette.ts` 순서와 동일)
+/// 팔레트 인덱스 0..5 (`src/lib/palette.ts` 순서와 동일 — 2026-08-03 디자인 v2로 5→6색 확장)
 pub type ColorIndex = u8;
 
 pub const OPACITY_MIN: u8 = 35;
 pub const OPACITY_MAX: u8 = 100;
-pub const COLOR_MAX: ColorIndex = 4;
+/// 6색(yellow·lime·mint·blue·lavender·white) 팔레트의 마지막 인덱스.
+/// 기존 DB의 색상 인덱스 재매핑은 `db.rs`의 `m003_repalette` 마이그레이션 참조.
+pub const COLOR_MAX: ColorIndex = 5;
 
 /// 제목 최대 길이 (문자 수).
 pub const TITLE_MAX_CHARS: usize = 80;
@@ -1212,6 +1214,34 @@ let x = 1;
         assert_eq!(updated.opacity, OPACITY_MAX);
         assert_eq!(updated.pinned, note.pinned);
         assert_eq!(updated.open, note.open);
+    }
+
+    /// DoD — 2026-08-03 디자인 v2: 팔레트가 5→6색으로 늘어 COLOR_MAX가 4→5로 바뀌었다.
+    /// 클램프 상한이 실제로 새 값을 반영하는지 확인한다 (5까지 허용, 6부터 클램프).
+    #[test]
+    fn color_clamp_reflects_six_color_palette() {
+        let conn = open_memory().unwrap();
+
+        // 새 6번째 색(인덱스 5, white)까지는 그대로 통과해야 한다
+        let note = create_note_in(&conn, Some(5)).unwrap();
+        assert_eq!(note.color, 5);
+
+        // 범위 밖 값은 COLOR_MAX(5)로 클램프된다 — create_note_in 경로
+        let over = create_note_in(&conn, Some(200)).unwrap();
+        assert_eq!(over.color, COLOR_MAX);
+
+        // set_note_meta_in 경로도 동일하게 클램프된다
+        let updated = set_note_meta_in(
+            &conn,
+            &note.id,
+            &NoteMeta {
+                color: Some(9),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(updated.color, COLOR_MAX);
+        assert_eq!(COLOR_MAX, 5, "6색 팔레트의 마지막 인덱스는 5여야 한다");
     }
 
     #[test]

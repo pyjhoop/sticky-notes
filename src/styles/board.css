@@ -1,10 +1,15 @@
 /*
- * 보드 창 (M5) + 보드·설정 공용 다크 크롬 컴포넌트.
+ * 관리 창(구 "보드 창") — 폴더 사이드바 + 리스트 뷰 + 관리·설정 공용 라이트 크롬 컴포넌트.
  *
- * 근거: design/Sticky Notes for Windows.dc.html
- *   보드 창 line 155-195 / 타이틀바 line 156-164 / 설정 토글 line 222-254
+ * 근거: design/StickyNote App.dc.html (버전 2) 226~346행(관리 창 전체) ·
+ *   타이틀바 228행 · 토글 360/377/381/409행 · 트레이 참고용 429~450행.
  *
- * 색·치수는 전부 tokens.css 참조. 하드코딩 금지 (CLAUDE.md 디자인 토큰 절).
+ * 2026-08-03 2단계 — 다크 → 라이트 전환(값은 tokens.css "라이트 크롬" 절 참조),
+ * 색상 스트라이프(`.board__row-stripe`) · "화면에 떠 있음" 배지 초록 틴트 추가.
+ *
+ * 색·치수는 전부 tokens.css 참조. 하드코딩 금지(CLAUDE.md 디자인 토큰 절) —
+ * accent 알파 배경만 예외로 `color-mix(in srgb, var(--accent) N%, transparent)`를
+ * 쓴다(값 자체가 아니라 토큰에서 파생된 계산식이라 하드코딩이 아니다).
  * settings.css가 이 파일을 @import 하므로 공용 규칙은 여기 둔다.
  *
  * **소유: 트랙 D.**
@@ -20,7 +25,9 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: var(--radius-window);
-  border: 1px solid var(--dark-border);
+  /* 창 외곽선은 필드 테두리(--dark-border)보다 옅은 구조 구분선 톤이다 —
+     design 227/353행 창 테두리는 --dark-divider와 같은 알파(0.12)다. */
+  border: 1px solid var(--dark-divider);
   color: var(--dark-text);
 }
 
@@ -47,9 +54,9 @@ body:not([data-backdrop]) .dark-window {
  *   ::-webkit-scrollbar 규칙 전체를 무시한다.** 그래서 이 저장소는
  *   표준 속성을 어디에도 쓰지 않는다. (같은 판단이 src/editor/theme.ts 에도 있다)
  *
- * ▸ 색은 종이 쪽(--on-paper-*)을 그대로 쓸 수 없다 — 검정 알파는 다크 크롬에서
- *   보이지 않는다. 다크 크롬의 상호작용 표면 쌍(--dark-btn-bg → --dark-btn-bg-hover)을
- *   쓴다. 썸은 잡아 끄는 컨트롤이므로 버튼과 같은 계열이 맞다.
+ * ▸ 색은 종이 쪽(--on-paper-*)을 그대로 쓸 수 없다 — 라이트 크롬 전환(2단계) 후
+ *   --dark-btn-bg/-hover는 필드 채움과 같은 거의 흰색 톤이라 0.985 창 배경 위에서
+ *   스크롤바 썸이 사실상 안 보인다. 전용 톤(--dark-scrollbar-thumb*)을 쓴다.
  *
  * ▸ 레이아웃 시프트 0 — 트랙 폭은 유휴·호버가 같고, 굵기는 썸의 투명 border 로만
  *   바뀐다. scrollbar-gutter:stable 이 스크롤바가 생기는 순간의 시프트도 막는다.
@@ -72,7 +79,7 @@ body:not([data-backdrop]) .dark-window {
 }
 
 .dark-window ::-webkit-scrollbar-thumb {
-  background-color: var(--dark-btn-bg);
+  background-color: var(--dark-scrollbar-thumb);
   /* 투명 border + padding-box 로 트랙 안에서 썸만 가늘게 그린다 */
   background-clip: padding-box;
   border: calc((var(--scrollbar-w) - var(--scrollbar-thumb-w)) / 2) solid transparent;
@@ -84,7 +91,7 @@ body:not([data-backdrop]) .dark-window {
 .dark-window :hover::-webkit-scrollbar-thumb,
 .dark-window ::-webkit-scrollbar-thumb:hover,
 .dark-window ::-webkit-scrollbar-thumb:active {
-  background-color: var(--dark-btn-bg-hover);
+  background-color: var(--dark-scrollbar-thumb-hover);
   border-width: calc((var(--scrollbar-w) - var(--scrollbar-thumb-w-hover)) / 2);
 }
 
@@ -183,6 +190,9 @@ body:not([data-backdrop]) .dark-window {
   height: var(--toggle-knob);
   border-radius: 50%;
   background: var(--dark-knob-off);
+  /* 라이트 크롬에서는 트랙(OFF)도 옅은 회색이라 흰 노브만으로는 경계가 흐리다 —
+     기존 --shadow-thumb(슬라이더 thumb과 동일 톤)을 재사용해 살짝 띄운다. */
+  box-shadow: var(--shadow-thumb);
   transition: background-color var(--fade-duration) var(--fade-ease);
 }
 
@@ -262,7 +272,10 @@ body:not([data-backdrop]) .dark-window {
   border-radius: var(--radius-field);
   background: var(--dark-field-bg);
   border: 1px solid var(--dark-border);
-  color: var(--yellow-saving);
+  /* --yellow-saving(oklch L0.7)는 어두운 종이/크롬 배경 위 텍스트로 튜닝된 값이라
+     라이트 크롬(0.985 배경) 위에서는 대비가 너무 약하다 — 같은 색상(hue)을 유지한
+     채 어둡게 내린 파생값을 쓴다(하드코딩 회피, 토큰 관계로 계산). */
+  color: color-mix(in oklch, var(--yellow-saving) 55%, black);
   font-size: var(--fs-small);
 }
 
@@ -461,7 +474,9 @@ body:not([data-backdrop]) .dark-window {
 }
 
 .board__folder-item[data-active='true'] {
-  background: var(--dark-hover);
+  /* design 237행 — 활성 폴더 배경은 accent 10% 알파. --accent가 설정에서 4종 중
+     다른 색으로 바뀔 수 있어 고정 oklch 대신 color-mix로 파생한다. */
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--accent);
 }
 
@@ -570,7 +585,15 @@ body:not([data-backdrop]) .dark-window {
 }
 
 .board__row--selected {
-  background: var(--dark-field-bg);
+  /* design 268/280행 — 선택된 리스트 행 배경은 accent 6% 알파(활성 폴더보다 옅다) */
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.board__row-stripe {
+  flex: none;
+  align-self: stretch;
+  width: var(--board-row-accent-w);
+  border-radius: 2px;
 }
 
 .board__row-check {
@@ -624,6 +647,13 @@ body:not([data-backdrop]) .dark-window {
   white-space: nowrap;
 }
 
+/* "화면에 떠 있음" 배지 — design 272행, 초록 텍스트 + 초록 6% 알파 배경.
+   "핀" 배지는 design에 별도 예시가 없어 중립 톤(.board__badge 기본)을 유지한다. */
+.board__badge--live {
+  color: var(--green-done);
+  background: color-mix(in srgb, var(--green-done) 12%, transparent);
+}
+
 .board__badge-dot {
   flex: none;
   width: 5px;
@@ -660,7 +690,11 @@ body:not([data-backdrop]) .dark-window {
 
 .board__footer {
   flex: none;
-  padding: 9px var(--board-pad);
+  height: var(--board-footer-h);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 var(--board-pad);
   border-top: 1px solid var(--dark-divider);
   font-size: var(--fs-small);
   color: var(--dark-placeholder);
@@ -668,7 +702,7 @@ body:not([data-backdrop]) .dark-window {
 
 /* ═══════════════════════════════════════════════════════════
  * 보드 — 팝업 메뉴 (우클릭 컨텍스트 메뉴 · 폴더 이동)
- * 디자인의 트레이 메뉴 스타일 재사용 (line 285-292)
+ * 디자인의 트레이 메뉴 스타일 재사용 (design v2 429~450행)
  * ═══════════════════════════════════════════════════════════ */
 
 .board__menu {

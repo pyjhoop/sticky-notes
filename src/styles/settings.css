@@ -1,17 +1,20 @@
 /*
- * 설정 창 (M6) — 620px 고정폭, DISPLAY / DATA / SHORTCUTS.
+ * 설정 창 (M6) — 560px 고정폭 · 700px 높이(디자인 v2 2단계, 계약 변경), DISPLAY / DATA / SHORTCUTS.
  *
- * 근거: design/Sticky Notes for Windows.dc.html line 210-258
+ * 근거: design/StickyNote App.dc.html (버전 2) 352~424행.
  *   디자인의 `OBSIDIAN` 섹션은 v1에서 `DATA`로 재해석됐다 (plan.md).
+ *   2026-08-03 2단계 — 다크 → 라이트 전환, 라이트 크롬 값은 tokens.css 참조.
  *
- * 공용 다크 크롬(TitleBar · Toggle · 필드 · 버튼)은 board.css에 있다.
+ * 공용 라이트 크롬(TitleBar · Toggle · 필드 · 버튼)은 board.css에 있다.
  *
  * **소유: 트랙 D.**
  */
 
 @import './board.css';
 
-/* 설정 창은 디자인상 보드보다 한 단계 진한 크롬 — rgba(34,32,30,.94) */
+/* 2026-08-03 2단계 — 라이트 전환 후 설정 창은 관리 창과 같은 배경(design 227/353행
+   둘 다 oklch(0.985 0.003 90))이라 --dark-bg-settings는 --dark-bg와 같은 값이다.
+   창별로 다른 값을 넣을 수 있게 셀렉터 구조는 그대로 남겨둔다. */
 body[data-window='settings'] .dark-window {
   background: var(--dark-bg-settings);
 }
@@ -116,15 +119,19 @@ body[data-window='settings']:not([data-backdrop]) .dark-window {
   box-shadow: 0 0 0 2px var(--dark-text);
 }
 
-/* 단축키 입력 */
+/* 단축키 입력 — design 392~394행 키캡(모노 폰트 · radius 4px · 아래 보더 2px 두꺼운
+   3D 느낌)을 참고한 리스킨. 디자인은 "Ctrl"/"Shift"/"N"을 키캡 3개로 나눠 그리지만
+   여기는 편집 가능한 단일 필드(accelerator 문자열 통째)라 마크업은 그대로 두고
+   하나의 키캡처럼 보이도록 테두리·radius만 맞춘다. */
 .settings__accel {
   width: 168px;
   flex: none;
   height: var(--field-h);
-  padding: 0 11px;
-  border-radius: var(--radius-field);
+  padding: 0 var(--keycap-pad-x);
+  border-radius: var(--keycap-radius);
   background: var(--dark-field-bg-soft);
-  border: 1px solid var(--dark-border);
+  border: var(--keycap-border-w) solid var(--dark-border);
+  border-bottom-width: var(--keycap-border-w-bottom);
   outline: none;
   font-family: var(--font-mono);
   font-size: var(--fs-small);
@@ -157,5 +164,6 @@ body[data-window='settings']:not([data-backdrop]) .dark-window {
 }
 
 .settings__notice--warn {
-  color: var(--yellow-saving);
+  /* board.css의 .board__notice와 같은 이유로 어둡게 내린 파생값을 쓴다 */
+  color: color-mix(in oklch, var(--yellow-saving) 55%, black);
 }

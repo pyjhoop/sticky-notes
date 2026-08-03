@@ -25,7 +25,8 @@
 | **스크롤바 축소** | — | 🟡 **main 병합 — 사용자 실기 확인 대기** (검증 생략) | `fix/scrollbar` | 2026-07-26 |
 | **코드블록 언어별 스타일 · 줄 맨앞 캐럿 · 현재 줄 강조 제거** | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** (검증 생략) | `fix/editor-polish` | 2026-07-26 |
 | **보드 폴더뷰** (카드 그리드 → 폴더 사이드바 + 리스트, 휴지통 14일 자동삭제) | — | 🟡 **리더가 직접 build/test/clippy 확인 후 main 병합 — 사용자 실기 확인 대기** (검증 에이전트 스폰이 auto-mode classifier에 막혀 리더가 대신 확인) | `main` (구 `worktree-agent-ab5bb952a35b1a884`) | 2026-08-03 |
-| **디자인 v2 전면 개편 — 1단계(토큰)**: oklch 색 체계 전환 · 팔레트 5→6색(+DB 재매핑) · IBM Plex 폰트 | — | 🟡 **1단계(토큰) 완료 — 2단계(컴포넌트 리스킨) 대기.** `npm run build`·`npm test`(187)·`cargo test`(76)·`cargo clippy` 전부 PASS | `main` (구 `worktree-agent-ae54754fafb010b6f`) | 2026-08-03 |
+| **디자인 v2 전면 개편 — 1단계(토큰)**: oklch 색 체계 전환 · 팔레트 5→6색(+DB 재매핑) · IBM Plex 폰트 | — | ✅ **완료** — `npm run build`·`npm test`(187)·`cargo test`(76)·`cargo clippy` 전부 PASS | `main` (구 `worktree-agent-ae54754fafb010b6f`) | 2026-08-03 |
+| **디자인 v2 전면 개편 — 2단계 B(관리 창·설정 창 리스킨)**: 다크→라이트 전환, 색상 스트라이프·키캡·배지 리스킨, 설정 창 560×700 | B | 🟡 **코드 완료 — 검증/build 확인 대기** | (worktree `agent-a672bcba3d6d25bb6`) | 2026-08-03 |
 
 > **2026-07-26 사용자 지시 — 이 세션 한정, 검증 에이전트 생략.**
 > 속도 문제로 구현 → 검증 루프의 **검증 단계를 건너뛴다.** 구현 에이전트가 `npm run build` · `npm test` 를
@@ -314,6 +315,9 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-08-03 | `src-tauri/src/db.rs` | `m003_repalette` 마이그레이션 **추가** (MIGRATIONS 배열 뒤) | 팔레트 5→6색 재매핑. 구 인덱스 1~4를 hue 거리 기준 신 인덱스로 이동(`0→0,1→4,2→2,3→1,4→3`), 근거는 함수 문서 주석. `LATEST_VERSION`이 자동으로 3이 된다 — 기존 스키마·데이터는 그대로, **뒤로만 추가**하는 관례를 지켰다 |
 | 2026-08-03 | `src-tauri/src/notes.rs` | `COLOR_MAX` 4→**5** | 6색 팔레트에 맞춰 클램프 상한 확장. `create_note_in`/`set_note_meta_in`/`search_notes_in`의 `color.min(COLOR_MAX)` 클램프가 0..5를 허용하도록 자동 반영 |
 | 2026-08-03 | `src/lib/palette.ts` | `ColorIndex` 5리터럴 유니온으로 확장, `PALETTE` 6개 항목(oklch 문자열), `normalizeColor` 상한 4→5 | 위와 같은 건. `ACCENTS`/`Accent`/`DEFAULT_ACCENT`는 **의도적으로 hex 그대로 유지** — `src-tauri/src/db.rs`의 `ACCENT_OPTIONS`와 exact-match로 검증되는 저장 식별자라, oklch로 바꾸면 기존 사용자의 저장된 accent 설정이 깨진다 |
+| 2026-08-03 | `src/styles/tokens.css` | **디자인 v2 2단계** — "다크 크롬" 절 확정: `--dark-bg*`/`--dark-border`/`--dark-divider`/`--dark-hover`/`--dark-field-bg*`/`--dark-btn-bg*`/`--dark-toggle-off`/`--dark-text*`/`--dark-placeholder`/`--dark-knob-*` 값을 전부 다크→라이트로 교체(클래스명 불변, 값만 교체 — 사용자 지시). `--dark-scrollbar-thumb`/`--dark-scrollbar-thumb-hover` **신규 추가**(라이트 배경에서 기존 `--dark-btn-bg` 재사용 시 스크롤바가 사실상 안 보여서) | 1단계가 "2단계 판단 필요"로 남겨둔 다크→라이트 전환을 확정. 값의 디자인 출처는 tokens.css 해당 블록 주석 참조 |
+| 2026-08-03 | `src/styles/tokens.css` | `--settings-w` 620px → **560px** (+ 주석 갱신, 계약 변경 반영 완료로 정리) | 설정 창 크기를 design v2 명시값(560×700)에 맞춤. `tauri.conf.json`과 동시 변경(아래 행) |
+| 2026-08-03 | `src-tauri/tauri.conf.json` | settings 창 `width` 620→**560**, `height` 640→**700**, `minWidth`/`maxWidth` 620→**560**(고정폭 패턴 유지) | 디자인 v2 2단계 — design 352행 목업 560×700을 확정 반영(1단계가 미반영으로 남겨둔 계약 변경). board 창(1040×620 목업 vs 실제 640) 쪽은 이번 트랙 범위가 아니라 그대로 뒀다 |
 
 ### 계약을 바꿔야 할 때
 

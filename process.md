@@ -26,7 +26,8 @@
 | **코드블록 언어별 스타일 · 줄 맨앞 캐럿 · 현재 줄 강조 제거** | — | 🟡 **코드 완료 — 사용자 실기 확인 대기** (검증 생략) | `fix/editor-polish` | 2026-07-26 |
 | **보드 폴더뷰** (카드 그리드 → 폴더 사이드바 + 리스트, 휴지통 14일 자동삭제) | — | 🟡 **리더가 직접 build/test/clippy 확인 후 main 병합 — 사용자 실기 확인 대기** (검증 에이전트 스폰이 auto-mode classifier에 막혀 리더가 대신 확인) | `main` (구 `worktree-agent-ab5bb952a35b1a884`) | 2026-08-03 |
 | **디자인 v2 전면 개편 — 1단계(토큰)**: oklch 색 체계 전환 · 팔레트 5→6색(+DB 재매핑) · IBM Plex 폰트 | — | ✅ **완료 — main 병합** | `main` (구 `worktree-agent-ae54754fafb010b6f`) | 2026-08-03 |
-| **디자인 v2 전면 개편 — 2단계 A트랙(노트 창 + 에디터 리스킨)**: 그림자·라운드·컨트롤 바·팔레트 팝오버·저장 푸터·체크박스·코드 팔레트 완성·업데이트 토스트 | A | 🟡 **코드 완료 — 검증·병합 대기.** `npm run build`·`npm test`(187) PASS. `cargo test`/`cargo clippy`는 이 트랙이 Rust를 건드리지 않아 대상 없음. **그림자는 창 여백 0이라 아직 시각적으로 안 보임**(계약 변경 필요 — 위 계약 변경 이력 참조) | `worktree-agent-a2c1c24096dced423` | 2026-08-03 |
+| **디자인 v2 전면 개편 — 2단계 A트랙(노트 창 + 에디터 리스킨)**: 그림자·라운드·컨트롤 바·팔레트 팝오버·저장 푸터·체크박스·코드 팔레트 완성·업데이트 토스트 | A | ✅ **완료 — 리더 build/test 확인 후 main 병합.** **그림자는 창 여백 0이라 아직 시각적으로 안 보임** — 별도 계약 변경(여백 부활) 필요, 사용자 판단 대기 | `main` (구 `worktree-agent-a2c1c24096dced423`) | 2026-08-03 |
+| **디자인 v2 전면 개편 — 2단계 B트랙(관리 창·설정 창 리스킨)**: 다크→라이트 전환, 색상 스트라이프·키캡·배지 리스킨, 설정 창 560×700 | B | ✅ **완료 — 검증 PASS, main 병합** | `main` (구 `worktree-agent-a672bcba3d6d25bb6`) | 2026-08-03 |
 
 > **2026-07-26 사용자 지시 — 이 세션 한정, 검증 에이전트 생략.**
 > 속도 문제로 구현 → 검증 루프의 **검증 단계를 건너뛴다.** 구현 에이전트가 `npm run build` · `npm test` 를
@@ -317,6 +318,9 @@ M0이 끝나면 이 4개는 **동결**된다. 어떤 에이전트도 임의로 �
 | 2026-08-03 | `src/lib/palette.ts` | `ColorIndex` 5리터럴 유니온으로 확장, `PALETTE` 6개 항목(oklch 문자열), `normalizeColor` 상한 4→5 | 위와 같은 건. `ACCENTS`/`Accent`/`DEFAULT_ACCENT`는 **의도적으로 hex 그대로 유지** — `src-tauri/src/db.rs`의 `ACCENT_OPTIONS`와 exact-match로 검증되는 저장 식별자라, oklch로 바꾸면 기존 사용자의 저장된 accent 설정이 깨진다 |
 | 2026-08-03 | `src/styles/tokens.css` | **디자인 v2 2단계(A트랙 · 노트 창 리스킨)** — 코드 팔레트 4색(`--code-string`/`--code-number`/`--code-operator`/`--code-variable`) hex→oklch 신규 확정(대비 계산·hue 배치 근거는 파일 내 "코드 블록" 절 주석), `--checkbox-check` **추가**(체크박스 체크마크 전용, design M-04 실측), 그림자 6종 `--shadow-paper-0..5` **추가** + `--shadow-note`를 그 중 하나를 가리키는 런타임 스위치로 재정의(옛 순검정 `--shadow-note`/`--shadow-note-idle`/`--shadow-note-small`은 삭제 — idle/small은 사용처 0이었다), `--control-btn` 26px→**22px**(design 68행 닫기 아이콘 실측), `--note-grab` 6px→**5px**(버튼이 22px로 줄며 생긴 상단 리사이즈 그랩 존과의 3px 겹침을 해소하기 위한 동반 조정) | 노트 창 리스킨 완료 기준(색·라운드·그림자·체크박스·코드 팔레트 전부 디자인 근거로 확정)을 채우려면 이 5가지가 전부 tokens.css 수정을 필요로 했다. **그림자는 시각적으로 아직 안 보인다** — 메모 창이 "창=종이, 사방 여백 0"이라 box-shadow가 창 경계에서 잘린다. 여백을 되살리는 tauri.conf.json 변경은 이번 세션 지시 범위 밖이라 값만 준비해 뒀다(note.css 머리말·리더 보고 참조) |
 | 2026-08-03 | `src/lib/palette.ts` | `paletteStyle()`이 `--shadow-note`도 반환하도록 확장(순수 추가, 기존 두 필드 불변) | 위 그림자 토큰을 `NoteWindow.tsx`가 색 인덱스별로 스위칭할 유일한 진입점. `--paper-bg`/`--chrome-bg`와 동일한 기존 패턴 |
+| 2026-08-03 | `src/styles/tokens.css` | **디자인 v2 2단계(B트랙 · 관리 창·설정 창 리스킨)** — "다크 크롬" 절 확정: `--dark-bg*`/`--dark-border`/`--dark-divider`/`--dark-hover`/`--dark-field-bg*`/`--dark-btn-bg*`/`--dark-toggle-off`/`--dark-text*`/`--dark-placeholder`/`--dark-knob-*` 값을 전부 다크→라이트로 교체(클래스명 불변, 값만 교체 — 사용자 지시). `--dark-scrollbar-thumb`/`--dark-scrollbar-thumb-hover` **신규 추가**(라이트 배경에서 기존 `--dark-btn-bg` 재사용 시 스크롤바가 사실상 안 보여서) | 1단계가 "2단계 판단 필요"로 남겨둔 다크→라이트 전환을 확정. 값의 디자인 출처는 tokens.css 해당 블록 주석 참조 |
+| 2026-08-03 | `src/styles/tokens.css` | `--settings-w` 620px → **560px** (+ 주석 갱신, 계약 변경 반영 완료로 정리) | 설정 창 크기를 design v2 명시값(560×700)에 맞춤. `tauri.conf.json`과 동시 변경(아래 행) |
+| 2026-08-03 | `src-tauri/tauri.conf.json` | settings 창 `width` 620→**560**, `height` 640→**700**, `minWidth`/`maxWidth` 620→**560**(고정폭 패턴 유지) | 디자인 v2 2단계 — design 352행 목업 560×700을 확정 반영(1단계가 미반영으로 남겨둔 계약 변경). board 창(1040×620 목업 vs 실제 640) 쪽은 이번 트랙 범위가 아니라 그대로 뒀다 |
 
 ### 계약을 바꿔야 할 때
 

@@ -19,6 +19,7 @@ import { listen } from '@tauri-apps/api/event'
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import TitleBar from '../components/TitleBar'
 import { failureNotice } from '../lib/errors'
+import { paletteOf } from '../lib/palette'
 import { formatRelative } from '../lib/time'
 import {
   applyWindowBackdrop,
@@ -701,11 +702,17 @@ export default function BoardWindow() {
                     />
                   </label>
 
+                  <span
+                    className="board__row-stripe"
+                    aria-hidden="true"
+                    style={{ background: `var(${paletteOf(n.color).paperVar})` }}
+                  />
+
                   <div className="board__row-main">
                     <div className="board__row-top">
                       <span className="board__row-title">{n.title || '제목 없음'}</span>
                       {n.open && (
-                        <span className="board__badge">
+                        <span className="board__badge board__badge--live">
                           <span className="board__badge-dot" aria-hidden="true" />
                           화면에 떠 있음
                         </span>

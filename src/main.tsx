@@ -13,11 +13,15 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 // 폰트는 전부 로컬 번들 — CDN 금지 (CLAUDE.md 절대규칙 2)
-import '@fontsource/noto-sans-kr/400.css'
-import '@fontsource/noto-sans-kr/500.css'
-import '@fontsource/noto-sans-kr/700.css'
-import '@fontsource/jetbrains-mono/400.css'
-import '@fontsource/jetbrains-mono/500.css'
+// 2026-08-03 디자인 v2: Noto Sans KR / JetBrains Mono → IBM Plex Sans KR / IBM Plex Mono
+import '@fontsource/ibm-plex-sans-kr/400.css'
+import '@fontsource/ibm-plex-sans-kr/500.css'
+import '@fontsource/ibm-plex-sans-kr/600.css'
+import '@fontsource/ibm-plex-sans-kr/700.css'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/ibm-plex-mono/600.css'
+import '@fontsource/ibm-plex-mono/400-italic.css'
 
 import './styles/tokens.css'
 import './styles/global.css'
